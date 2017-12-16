@@ -60,21 +60,20 @@ Definition NextPotential (N: Neuron) (Inputs: list nat): Q :=
       then  (potential (Weights N) Inputs)
       else  (potential (Weights N) Inputs) + (Leak_Factor N) * (Current N).
 
-Definition NextOutput (N: Neuron) (Inputs: list nat): nat :=
-  if (Qle_bool (Current N) 1)
+Definition NextOutput (N: Neuron) (Inputs: list nat) : nat :=
+  if (Qle_bool (Tau N) (NextPotential N Inputs))
       then 1%nat
       else 0%nat.
 
 Definition NextNeuron (N: Neuron) (Inputs: list nat): Neuron := MakeNeuron
-  (if (Qle_bool (Tau N) (Current N))
-      then  [1%nat] ++ (Output N)
-      else  [0%nat] ++ (Output N))
+  ((Output N) ++ [NextOutput N Inputs])
   (Weights N)
   (Leak_Factor N)
   (Tau N)
-  (if (Qle_bool (Tau N) (Current N))
-      then  (potential (Weights N) Inputs)
-      else  (potential (Weights N) Inputs) + (Leak_Factor N) * (Current N)).
+  (NextPotential N Inputs).
+
+Compute NextOutput (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat].
+Compute NextNeuron (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (Qmake 5 10)) [1%nat].
 
 Definition Delayer_Effect (In: list nat) (Out: list nat): bool :=
   match Out with
@@ -112,11 +111,15 @@ Fixpoint WeightInRange (Weights: list Q): bool :=
 end.
 
 Definition ResetNeuron (N: Neuron): Neuron := MakeNeuron
-  (nil)  
+  ([0%nat])  
   (Weights N)
   (Leak_Factor N)
   (Tau N)
   (0).
+
+Print QArith_base.
+Compute MakeNeuron (nil) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0).
+Compute Output (NextNeuron (MakeNeuron (nil) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat]). 
 
 Hypothesis Output_Bin: forall N: Neuron, (Bin_List (Output N) = true).
 Hypothesis LeakRange: forall N: Neuron, (andb (Qle_bool (Leak_Factor N) 1) (Qle_bool 0 (Leak_Factor N)) = true).
@@ -129,7 +132,7 @@ Fixpoint ProduceNoutputs (N: Neuron) (In: list nat): list nat :=
   | nil => [0%nat]
   | h::t => ProduceNoutputs
               (MakeNeuron
-              ((Output N) ++ [NextOutput N [h]])
+              ((Output N) ++ [NextOutput N t])
               (Weights N)
               (Leak_Factor N)
               (Tau N)
@@ -138,20 +141,17 @@ end.
 
 Fixpoint AfterNsteps (N: Neuron) (In: list nat): Neuron :=
   match In with
-  | nil => MakeNeuron
-           ([0%nat])
-           (Weights N)
-           (Leak_Factor N)
-           (Tau N)
-           (0)
-  | h::t => AfterNsteps
-              (MakeNeuron
-              ((Output N) ++ [NextOutput N [h]])
-              (Weights N)
-              (Leak_Factor N)
-              (Tau N)
-              (NextPotential N [h])) t 
+  | nil => N
+  | h::t => AfterNsteps (NextNeuron N [h]) t
 end.
+
+Compute (AfterNsteps (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat; 1%nat]).
+Example Test_After:
+  Output (AfterNsteps (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat]) = [0%nat;1%nat].
+Proof.
+  simpl. 
+  unfold NextOutput. simpl. reflexivity.
+Qed.
 
 Print QArith.
 SearchAbout eqb.
@@ -342,14 +342,12 @@ Proof.
         simpl in H3.*)
 
 Lemma Not_nill_Output: forall (N: Neuron) (In: list nat),
-  Output (AfterNsteps N In) <> nil.
+  Output (AfterNsteps (ResetNeuron N) In) <> nil.
 Proof.
   intros.
   induction In as [|h l].
   - simpl. intros H. inversion H.
-  - unfold AfterNsteps.
-    unfold NextOutput. 
-    simpl. Admitted.
+  - simpl. unfold ResetNeuron. simpl. unfold NextNeuron. Admitted.
 
 Lemma Unchanged: forall (N: Neuron) (Inputs: list nat),
   (Leak_Factor N) == Leak_Factor (AfterNsteps N Inputs) /\ 
@@ -357,37 +355,40 @@ Lemma Unchanged: forall (N: Neuron) (Inputs: list nat),
   (Weights N) = (Weights (AfterNsteps N Inputs)).
   Admitted.
 
-Lemma OutputChange: forall (N: Neuron) (Inputs: list nat),
+(*Lemma OutputChange: forall (N: Neuron) (Inputs: list nat),
   Output (AfterNsteps N Inputs) = ProduceNoutputs N Inputs.
 Proof.
   intros. 
   induction Inputs as [|h l].
   - simpl. reflexivity.
-  - simpl. Admitted.
+  - simpl. Admitted.*)
 
-Theorem Property1: forall (N: Neuron) (M: Neuron) (Inputs: list nat),
+Theorem Property1: forall (Inputs: list nat) (N: Neuron) (M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   (beq_nat (length (Weights M)) 1%nat) = true /\
   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
   (Bin_List Inputs = true)                        -> (Delayer_Effect Inputs (Output M)) = true \/
                                                  (Filter_Effect (Output M)) = true.
 Proof.
-  intros N M Inputs [H1 [H2 [H3 H4]]].
+  induction Inputs as [|h1 l1].
+  (*intros Inputs N M [H1 [H2 [H3 H4]]].*)
   (*assert (exists l: list nat, l = (Output M)).
   { exists (Output M). auto. }
   destruct H as [l h].*)
-  destruct Inputs as [|h1 l1] eqn: H5.
+  (*induction Inputs as [|h1 l1].*)
   (*Focus 2.*)
-  - simpl in H3. unfold Eq_Neuron2 in H3. simpl in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
+  - intros N M [H1 [H2 [H3 H4]]]. simpl in H3. unfold Eq_Neuron2 in H3. simpl in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
     rewrite H1'. left. simpl. reflexivity.
-  - (*assert (exists l:list nat, l = (Output M)).
+  - intros N M [H1 [H2 [H3 H4]]]. (*assert (exists l:list nat, l = (Output M)).
       { generalize dependent M. exists (Output M). auto. }
       elim H.*)
       
-      induction (Output M) as [|h2 l2] eqn: H0.
-    + simpl in H3. unfold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]]. 
+      destruct (Output M) as [|h2 l2] eqn: H0.
+    + unfold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
       rewrite -> H0 in H1'. symmetry in H1'. apply Not_nill_Output in H1'. inversion H1'.
-    + simpl in H3. unfold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
+    + simpl in H3. unfold ResetNeuron in H3. unfold NextOutput in H3. simpl in H3. 
+      unfold NextPotential in H3. simpl in H3. apply PosTau in H3.      
+      fold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
       rewrite -> OutputChange in H1'. unfold ProduceNoutputs in H1'. 
       unfold AfterNsteps in H3. simpl in H3.
       simpl in H3. 
