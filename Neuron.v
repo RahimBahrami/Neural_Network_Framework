@@ -66,7 +66,7 @@ Definition NextOutput (N: Neuron) (Inputs: list nat) : nat :=
       else 0%nat.
 
 Definition NextNeuron (N: Neuron) (Inputs: list nat): Neuron := MakeNeuron
-  ((Output N) ++ [NextOutput N Inputs])
+  ((NextOutput N Inputs)::(Output N))
   (Weights N)
   (Leak_Factor N)
   (Tau N)
@@ -75,10 +75,16 @@ Definition NextNeuron (N: Neuron) (Inputs: list nat): Neuron := MakeNeuron
 Compute NextOutput (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat].
 Compute NextNeuron (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (Qmake 5 10)) [1%nat].
 
-Definition Delayer_Effect (In: list nat) (Out: list nat): bool :=
-  match Out with
-  | nil => false
-  | h::t => andb (beq_nat h 0%nat) (Eq_List In t)
+Fixpoint Delayer_Effect (In: list nat) (Out: list nat): Prop :=
+  match In with
+  | nil => match Out with
+           | nil => False
+           | h2::t2 => (beq_nat h2 0%nat) = true /\ t2 = nil
+           end
+  | h1::t1 => match Out with
+              | nil => False
+              | h2::t2 => (beq_nat h1 h2) = true /\ (Delayer_Effect t1 t2)
+              end
 end.
 
 Definition Start_with (l: list nat) (x: nat): bool :=
@@ -95,11 +101,18 @@ Fixpoint Consecutive (l: list nat) (x: nat): bool :=
                else Consecutive t x
 end.
 
-Definition Filter_Effect (Out: list nat): bool :=
+Fixpoint Filter_Effect (Out: list nat): Prop :=
   match Out with
-  | nil => false
-  | h::nil => false
-  | h1::h2::t => (andb (andb (beq_nat h1 0%nat) (beq_nat h2 0%nat)) (Consecutive Out 1%nat))
+  | nil => False
+  | h1::t1 => match t1 with
+            | nil => False
+            | h2::t2 => match t2 with
+                        | nil => (beq_nat h1 0%nat) = true /\ (beq_nat h2 0%nat) = true
+                        | h3::t3 => if (beq_nat h1 0%nat)
+                                    then Filter_Effect t1
+                                    else (beq_nat h2 0%nat) = true /\ Filter_Effect t1
+                        end
+              end
 end.
 
 Print Visibility.
@@ -142,12 +155,12 @@ end.
 Fixpoint AfterNsteps (N: Neuron) (In: list nat): Neuron :=
   match In with
   | nil => N
-  | h::t => AfterNsteps (NextNeuron N [h]) t
+  | h::t => NextNeuron (AfterNsteps N t) [h]
 end.
 
 Compute (AfterNsteps (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat; 1%nat]).
 Example Test_After:
-  Output (AfterNsteps (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat]) = [0%nat;1%nat].
+  Output (AfterNsteps (MakeNeuron ([0%nat]) ([Qmake 5 10]) (Qmake 1 10) (Qmake 3 10) (0)) [1%nat]) = [1%nat;0%nat].
 Proof.
   simpl. 
   unfold NextOutput. simpl. reflexivity.
@@ -367,8 +380,7 @@ Theorem Property1: forall (Inputs: list nat) (N: Neuron) (M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   (beq_nat (length (Weights M)) 1%nat) = true /\
   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
-  (Bin_List Inputs = true)                        -> (Delayer_Effect Inputs (Output M)) = true \/
-                                                 (Filter_Effect (Output M)) = true.
+  (Bin_List Inputs = true)                        -> (Delayer_Effect Inputs (Output M)) \/ (Filter_Effect (Output M)).
 Proof.
   induction Inputs as [|h1 l1].
   (*intros Inputs N M [H1 [H2 [H3 H4]]].*)
@@ -378,7 +390,7 @@ Proof.
   (*induction Inputs as [|h1 l1].*)
   (*Focus 2.*)
   - intros N M [H1 [H2 [H3 H4]]]. simpl in H3. unfold Eq_Neuron2 in H3. simpl in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
-    rewrite H1'. left. simpl. reflexivity.
+    rewrite H1'. left. simpl. auto.
   - intros N M [H1 [H2 [H3 H4]]]. (*assert (exists l:list nat, l = (Output M)).
       { generalize dependent M. exists (Output M). auto. }
       elim H.*)
@@ -386,7 +398,10 @@ Proof.
       destruct (Output M) as [|h2 l2] eqn: H0.
     + unfold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
       rewrite -> H0 in H1'. symmetry in H1'. apply Not_nill_Output in H1'. inversion H1'.
-    + simpl in H3. unfold ResetNeuron in H3. unfold NextOutput in H3. simpl in H3. 
+    + simpl in H3. unfold NextNeuron in H3. unfold Eq_Neuron2 in H3. simpl in H3.
+      remember (AfterNsteps (ResetNeuron N) l1) as T.
+      (*inversion H3 as [ H1' [H2' [H3' [H4' H5']]]]. 
+      simpl in H1'. simpl in H2'. simpl in H3'. simpl in H4'. simpl in H5'. unfold ResetNeuron in H3. unfold NextOutput in H3. simpl in H3. 
       unfold NextPotential in H3. simpl in H3. apply PosTau in H3.      
       fold Eq_Neuron2 in H3. inversion H3 as [ H1' [H2' [H3' [H4' H5']]]].
       rewrite -> OutputChange in H1'. unfold ProduceNoutputs in H1'. 
@@ -399,5 +414,5 @@ Proof.
         
         unfold Eq_Neuron in H3. simpl in H3. rewrite <- h in H3. 
         unfold Eq_List in H3. 
-        simpl in H3.
+        simpl in H3.*)
 
