@@ -87,6 +87,27 @@ Fixpoint Delayer_Effect (In: list nat) (Out: list nat): Prop :=
               end
 end.
 
+Fixpoint NZeros (n: nat): list nat :=
+  match n with
+  | O => nil
+  | S n' => 0%nat::NZeros n'
+end.
+
+Fixpoint RestAfterN (l: list nat) (n: nat): (list nat) :=
+  match l with
+  | nil => nil
+  | h::t => if (beq_nat n 0%nat) then l else (RestAfterN t (n - 1))
+end.
+     
+Fixpoint NDelayer_Effect (In: list nat) (Out: list nat) (n: nat): Prop :=
+  match In with
+  | nil => Out = NZeros n
+  | h1::t1 => match Out with
+              | nil => False
+              | h2::t2 => (beq_nat h1 h2) = true /\ NDelayer_Effect t1 t2 n
+              end
+end.
+
 Definition Start_with (l: list nat) (x: nat): bool :=
   match l with
   | nil => false
@@ -110,7 +131,7 @@ Fixpoint Filter_Effect (Out: list nat): Prop :=
                         | nil => (beq_nat h1 0%nat) = true /\ (beq_nat h2 0%nat) = true
                         | h3::t3 => if (beq_nat h1 0%nat)
                                     then Filter_Effect t1
-                                    else (beq_nat h2 0%nat) = true /\ Filter_Effect t1
+                                    else ((beq_nat h2 0%nat) = true) /\ Filter_Effect t1
                         end
               end
 end.
@@ -309,27 +330,50 @@ Qed.
     [filter_not_empty_In], we begin by recasting the
     [beq_nat_iff_true] lemma into a more convenient form in terms of
     [reflect]: *)
- 
+
 Lemma beq_natP : forall n m, reflect (n = m) (beq_nat n m).
 Proof.
   intros n m.
   apply iff_reflect. rewrite beq_nat_true_iff. reflexivity.
 Qed.
 
-Lemma Not_nill_Output: forall (N: Neuron) (In: list nat),
+Lemma Delayer_lists: forall (In Out: list nat),
+  Delayer_Effect In Out -> Out = In ++ [0%nat].
+Proof.
+  induction In as [|h1 t1].
+  - intros. simpl. destruct Out as [|h2 t2] eqn: HO.
+    + simpl in H. inversion H.
+    + simpl in H. inversion H as [H1 H2]. rewrite H2. generalize (beq_natP h2 0);intro HB.
+      apply reflect_iff in HB. inversion HB as [HB1 HB2]. apply HB2 in H1. rewrite H1. auto.
+  - intros. simpl. destruct Out as [|h2 t2] eqn: HO.
+    + simpl in H. inversion H.
+    + simpl in H. generalize (IHt1 t2); intro HT. inversion H as [H1 H2].
+      apply HT in H2. rewrite H2. generalize (beq_natP h1 h2);intro HB.
+      apply reflect_iff in HB. inversion HB as [HB1 HB2]. apply HB2 in H1.
+      rewrite H1. reflexivity.
+Qed.
+
+Lemma Not_nil_Output: forall (In: list nat) (N: Neuron),
   Output (AfterNsteps (ResetNeuron N) In) <> nil.
 Proof.
-  intros.
-  induction In as [|h l].
-  - simpl. intros H. inversion H.
-  - simpl. unfold ResetNeuron. simpl. unfold NextNeuron. Admitted.
+  destruct In as [|h l ].
+  - intros N H. simpl in H. inversion H.
+  - intros N H. simpl in H. unfold NextOutput in H.
+    destruct (Qle_bool (Tau (AfterNsteps (ResetNeuron N) l))
+        (NextPotential (AfterNsteps (ResetNeuron N) l) [h])).
+    + inversion H.
+    + inversion H.
+Qed.
 
 Lemma Not_nil_Tail: forall (N: Neuron) (In: list nat),
   In <> nil -> tl (Output (AfterNsteps (ResetNeuron N) In)) <> nil.
 Proof.
-  Admitted.
+  intros. destruct In as [|h l].
+  - unfold not in H. simpl. unfold not. apply H.
+  - simpl. unfold not. intros H1. generalize (Not_nil_Output l N); intro HNN.
+    unfold not in HNN. apply HNN in H1. apply H1.
+Qed. 
 
-Compute hd [1%nat;0%nat].
 Lemma ZeroOne: forall (l: list nat),
   Bin_List l -> (beq_nat (hd 0%nat l) 0%nat) = true \/ (beq_nat (hd 0%nat l) 1%nat) = true.
 Proof.
@@ -339,6 +383,23 @@ Proof.
     simpl. destruct (beq_nat h 0).
            + left. reflexivity.
            + right. apply H1.
+Qed.
+
+Lemma HeadZeroFilter: forall (l: list nat),
+  (beq_nat (hd 1%nat l) 0%nat) = true /\ Filter_Effect (tl l) -> Filter_Effect l.
+Proof.
+  intros. inversion H as [H1 H2].
+  destruct l as [|h t].
+  - simpl in H2. inversion H2.
+  - simpl in H2. 
+    destruct t as [|h' t'].
+    + simpl in H2. inversion H2.
+    + destruct t' as [|h1 t1].
+      * simpl in H2. inversion H2.
+      * simpl in H1. generalize (beq_natP h 0);intro HB.
+        apply reflect_iff in HB. inversion HB as [HB1 HB2]. apply HB2 in H1.
+        rewrite H1. assert (H': Filter_Effect (0%nat::h'::h1::t1) = Filter_Effect (h'::h1::t1)).
+        { reflexivity. } auto.
 Qed.
 
 Lemma LengthZero: forall (l: list Q),
@@ -352,18 +413,32 @@ Qed.
 Lemma PosMult: forall (x y: Q),
   Qle_bool 0 x = true /\ Qle_bool 0 y = true -> Qle_bool 0 (x * y) = true.
 Proof.
-  Admitted.
-
-
-Lemma HeadZeroFilter: forall (l: list nat),
-  (beq_nat (hd 1%nat l) 0%nat) = true /\ Filter_Effect (tl l) -> Filter_Effect l.
-Proof.
-  Admitted.
+  intros. inversion H as [H1 H2].
+  apply Qle_bool_iff. apply Qle_bool_iff in H1. apply Qle_bool_iff in H2.
+  apply Qmult_le_0_compat. apply H1. apply H2.
+Qed.
 
 Lemma TailStartZeroFilter: forall (l: list nat),
   (beq_nat (hd 1%nat (tl l)) 0%nat) = true /\ Filter_Effect (tl l) -> Filter_Effect l.
 Proof.
-  Admitted.
+  intros. inversion H as [H1 H2]. destruct l as [|h t].
+  - simpl in H2. inversion H2.
+  - simpl in H2. destruct t as [|h' t'].
+    + simpl in H2. inversion H2.
+    + destruct t' as [|h1 t1].
+      * simpl in H2. inversion H2.
+      * simpl in H1. generalize (beq_natP h' 0);intro HB.
+        apply reflect_iff in HB. inversion HB as [HB1 HB2]. apply HB2 in H1.
+        rewrite H1. rewrite H1 in H2. destruct (beq_nat h 0) eqn: H3.
+        { generalize (beq_natP h 0);intro HB'.
+          apply reflect_iff in HB'. inversion HB' as [HB3 HB4]. apply HB4 in H3.
+          rewrite H3.
+          assert (H': Filter_Effect (0%nat::0%nat::h1::t1) = Filter_Effect (0%nat::h1::t1)).
+          { reflexivity. } auto. }
+        { simpl. rewrite H3. split. 
+          { reflexivity. }
+          { simpl in H2. apply H2. } }
+Qed.
 
 Lemma LastOutputZero: forall (N: Neuron),
   Qlt_bool (Current N) (Tau N) = true -> beq_nat (hd 1%nat (Output N)) 0%nat = true.
@@ -373,7 +448,13 @@ Proof.
 Lemma AddPos: forall (x y z: Q),
   Qle_bool x y = true /\ Qle_bool 0 z = true -> Qle_bool x (y + z) = true.
 Proof.
-  Admitted.
+  intros. inversion H as [H1 H2].
+  apply Qle_bool_iff in H1.
+  apply Qle_bool_iff in H2.
+  apply Qle_bool_iff.
+  generalize (Qplus_le_compat x y 0 z); intro HQLC.
+  apply HQLC in H1. rewrite Qplus_0_r in H1. auto. auto.
+Qed.
 
 Lemma ListForm: forall (l: list Q),
   (beq_nat (length l) 1%nat) = true -> exists hq:Q, l = hq::nil.
@@ -383,20 +464,56 @@ Proof.
   - simpl in H. apply LengthZero in H. rewrite H. exists h. reflexivity.
 Qed.
 
+Lemma Qlt_bool_iff: forall (x y : Q),
+   Qlt_bool x y = true <-> x < y.
+Proof.
+   intros. split.
+   - intros H. unfold Qlt_bool in H. unfold andb in H.
+     destruct (Qle_bool x y) eqn: H0.
+     + unfold negb in H.
+       destruct (Qeq_bool y x) eqn: H1.
+       * inversion H.
+       * apply Qle_bool_iff in H0. apply Qeq_bool_neq in H1.
+         apply Qle_lteq in H0. inversion H0.
+         { apply H2. }
+         { rewrite <- H2 in H1. unfold not in H1. generalize (Qeq_refl x); intro HQR.
+           apply H1 in HQR. inversion HQR. }
+    + inversion H.
+  - intros H. unfold Qlt_bool. unfold andb.
+    destruct (Qle_bool x y) eqn: H0.
+    + unfold negb. destruct (Qeq_bool y x) eqn: H1.
+      * apply Qeq_bool_iff in H1. apply Qlt_not_eq in H. unfold not in H.
+        rewrite H1 in H. generalize (Qeq_refl x); intro HQR. apply H in HQR. inversion HQR.
+      * reflexivity.
+    + apply Qlt_le_weak in H. apply Qle_bool_iff in H. rewrite H in H0. inversion H0.
+Qed.
+
+Lemma Qlt_bool_not_iff: forall (x y: Q),
+  Qlt_bool x y = false <-> ~ x < y.
+Proof.
+  intros. split. Admitted.
+
 Lemma Eq_reverse: forall (m n: Q),
   Qlt_bool m n = true <-> Qle_bool n m = false.
 Proof.
-  intros. Admitted.
+  intros. split.
+  - intros H. destruct (Qle_bool n m) eqn: H0.
+    + apply Qlt_bool_iff in H. apply Qle_bool_iff in H0. apply Qle_not_lt in H0.
+      unfold not in H0. apply H0 in H. inversion H.
+    + reflexivity. 
+  - intros H. destruct (Qlt_bool m n) eqn: H0.
+    + reflexivity.
+    + unfold Qlt_bool in H0. unfold andb in H0. destruct (Qle_bool n m) eqn: H1.
+      * inversion H.
+      * destruct (Qle_bool m n) eqn: H2.
+        { 
 
 Lemma LessEqTransivity: forall (n m p: Q),
   Qlt_bool n m = true /\ Qle_bool m p = true -> Qlt_bool n p = true.
 Proof.
-  intros. inversion H as [H1 H2]. unfold Qlt_bool. unfold andb.
-  destruct (Qle_bool n p) eqn: H3.
-  - destruct (Qeq_bool p n) eqn: H4.
-    + unfold Qlt_bool in H1. unfold Qlt_bool in H2.
-      unfold andb in H1.
-   Admitted.
+  intros. inversion H as [H1 H2]. apply Qlt_bool_iff in H1. apply Qle_bool_iff in H2.
+  apply Qlt_bool_iff. generalize (Qlt_le_trans n m p); intro HQLT. auto.
+Qed.
 
 Lemma AlwaysPos: forall (N: Neuron) (l: list nat),
   beq_nat (length (Weights N)) 1%nat = true /\ Qle_bool 0 (hd 0 (Weights N)) = true ->
@@ -404,7 +521,6 @@ Lemma AlwaysPos: forall (N: Neuron) (l: list nat),
 Proof.
   Admitted. 
   
-
 Lemma Unchanged: forall (N: Neuron) (Inputs: list nat),
   (Leak_Factor N) == Leak_Factor (AfterNsteps N Inputs) /\ 
   (Tau N) == (Tau (AfterNsteps N Inputs)) /\
@@ -428,17 +544,20 @@ Qed.
 Lemma AddZero: forall (x: Q),
   0 + x == x.
 Proof.
-  intros. unfold Qeq. simpl. Admitted.
+  apply Qplus_0_l.
+Qed.
 
 Lemma AddCommutive: forall (x y: Q),
   x + y == y + x.
 Proof.
-  Admitted.
+  apply Qplus_comm.
+Qed.
 
 Lemma MultZero: forall (x: Q),
   x * 0 == 0.
 Proof.
-  Admitted.
+  apply Qmult_0_r.
+Qed.
 
 Lemma LessThanEq: forall (x y: Q),
   Qlt_bool x y = true -> Qle_bool x y = true.
@@ -470,7 +589,7 @@ Proof.
   - intros N M [H1 [H2 [H3 H4]]]. 
       destruct (Output M) as [|h2 l2] eqn: H0.
     + unfold Eq_Neuron2 in H2. inversion H2 as [ H1' [H2' [H3' [H4' H5']]]].
-      rewrite -> H0 in H1'. symmetry in H1'. apply Not_nill_Output in H1'. inversion H1'.
+      rewrite -> H0 in H1'. symmetry in H1'. apply Not_nil_Output in H1'. inversion H1'.
     + simpl in H2. unfold NextNeuron in H2. unfold Eq_Neuron2 in H2. simpl in H2.
       inversion H2 as [ H1' [H2' [H3' [H4' H5']]]].
       remember (AfterNsteps (ResetNeuron N) l1) as T.
@@ -545,7 +664,7 @@ Proof.
   - intros N M [H1 [H2 [H3 [H4 H5]]]]. 
     destruct (Output M) as [|h2 l2] eqn: H0.
     + unfold Eq_Neuron2 in H2. inversion H2 as [ H1' [H2' [H3' [H4' H5']]]].
-      rewrite -> H0 in H1'. symmetry in H1'. apply Not_nill_Output in H1'. inversion H1'.
+      rewrite -> H0 in H1'. symmetry in H1'. apply Not_nil_Output in H1'. inversion H1'.
     + generalize (PosTau N); intro HPT. simpl in H2. unfold NextNeuron in H2. unfold Eq_Neuron2 in H2.
       simpl in H2. inversion H2 as [ H1' [H2' [H3' [H4' H5']]]].
       remember (AfterNsteps (ResetNeuron N) l1) as T.
@@ -636,7 +755,7 @@ Proof.
                   Bin_List Inputs /\ 
                   Qle_bool (Tau M) (hd 0 (Weights M)) = false /\ 
                   Inputs <> nil).
-      { split.
+      { split. (*repeat split; auto.*)
         { apply H1. }
         { split.
           { rewrite HI. apply H2. }
@@ -647,3 +766,45 @@ Proof.
               { unfold not. intro Hcon. rewrite HI in Hcon. inversion Hcon. } } } } }
      apply Filter_Property in H4. right. apply H4.
 Qed.
+
+Theorem Series2: forall (Inputs: list nat) (N1 N2 N3: Neuron),
+  (beq_nat (length (Weights N1)) 1%nat) = true /\
+  Eq_Neuron2 N2 (AfterNsteps (ResetNeuron N1) Inputs) /\
+  Eq_Neuron2 N3 (AfterNsteps N2 (Output N2)) /\
+  Bin_List Inputs /\ 
+  Qle_bool (Tau N2) (hd 0 (Weights N2)) = true /\
+  Qle_bool (Tau N3) (hd 0 (Weights N3)) = true
+    -> Output N3 = Inputs ++ [0%nat; 0%nat].
+Proof.
+  intros. inversion H as [H1 [H2 [H3 [H4 [H5 H6]]]]].
+  generalize (Delayer_Property Inputs N1 N2); intro HDI.
+  assert (H': (length (Weights N1) =? 1) = true /\
+              Eq_Neuron2 N2 (AfterNsteps (ResetNeuron N1) Inputs) /\
+              Bin_List Inputs /\ Qle_bool (Tau N2) (hd 0 (Weights N2)) = true).
+  { split; auto. } apply HDI in H'. clear H'.
+  generalize (Delayer_Property (Output N2) N2 N3); intro HDO.
+  assert (H': (length (Weights N2) =? 1) = true /\
+              Eq_Neuron2 N3 (AfterNsteps (ResetNeuron N2) (Output N2)) /\
+              Bin_List Inputs /\ Qle_bool (Tau N3) (hd 0 (Weights N3)) = true).
+  { split; try tauto. Admitted. (*} apply HDO in H'.
+  rewrite H5 in H6. Admitted.*)
+
+(*Theorem DecreaseNones: forall (N1 N2 N3: Neuron) (Inputs: list nat),
+  (beq_nat (length (Weights N)) 1%nat) = true /\
+  Eq_Neuron2 N3 (AfterNsteps (ResetNeuron N2) Inputs) /\
+  Bin_List Inputs /\ 
+   ->*) 
+Theorem NegativeWeight: forall (M N: Neuron) (Out Inputs: list nat),
+  (beq_nat (length (Weights N)) 1%nat) = true /\
+  Qlt_bool (hd 0 (Weights N)) 0  = true /\
+  Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\ 
+  Out = Output M -> ~(In 1%nat (Output M)).
+Proof.
+  intro M. induction (Output M) as [|h t].
+  (*Have variable M as the first variable and do intro M and induction on Output M*)
+  - intros. intros H'. unfold In in H'. apply H'.
+  - intros H'. inversion H as [H1 [H2 H3]]. unfold Eq_Neuron2 in H3.
+    inversion H3 as [ H1' [H2' [H3' [H4' H5']]]]. simpl in H'. 
+
+Theorem SeriesN: forall (Inputs: list nat) (NeuronList: list Neuron),
+  forall 
