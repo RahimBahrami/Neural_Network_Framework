@@ -440,20 +440,18 @@ Proof.
           { simpl in H2. apply H2. } }
 Qed.
 
-Lemma LastOutputZero: forall (N: Neuron),
-  Qlt_bool (Current N) (Tau N) = true -> beq_nat (hd 1%nat (Output N)) 0%nat = true.
+Lemma Unchanged: forall (N: Neuron) (Inputs: list nat),
+  (Leak_Factor N) == Leak_Factor (AfterNsteps N Inputs) /\ 
+  (Tau N) == (Tau (AfterNsteps N Inputs)) /\
+  (Weights N) = (Weights (AfterNsteps N Inputs)).
 Proof.
-  Admitted.
-
-Lemma AddPos: forall (x y z: Q),
-  Qle_bool x y = true /\ Qle_bool 0 z = true -> Qle_bool x (y + z) = true.
-Proof.
-  intros. inversion H as [H1 H2].
-  apply Qle_bool_iff in H1.
-  apply Qle_bool_iff in H2.
-  apply Qle_bool_iff.
-  generalize (Qplus_le_compat x y 0 z); intro HQLC.
-  apply HQLC in H1. rewrite Qplus_0_r in H1. auto. auto.
+  intros.  induction Inputs as [|h t].
+  - simpl. split. reflexivity. split. reflexivity. reflexivity.
+  - inversion IHt as [H1 [H2 H3]]. simpl. split.
+    + apply H1.
+    + split.
+      * apply H2.
+      * apply H3.
 Qed.
 
 Lemma ListForm: forall (l: list Q),
@@ -462,6 +460,18 @@ Proof.
   intros. destruct l as [|h t].
   - simpl in H. inversion H.
   - simpl in H. apply LengthZero in H. rewrite H. exists h. reflexivity.
+Qed.
+
+Lemma ResetUnchanged: forall (N: Neuron),
+  (Leak_Factor N) == Leak_Factor (ResetNeuron N) /\ 
+  (Tau N) == (Tau (ResetNeuron N)) /\
+  (Weights N) = (Weights (ResetNeuron N)).
+Proof.
+  intros. simpl. split.
+  - reflexivity.
+  - split.
+    + reflexivity.
+    + reflexivity.
 Qed.
 
 Lemma Qlt_bool_iff: forall (x y : Q),
@@ -491,7 +501,142 @@ Qed.
 Lemma Qlt_bool_not_iff: forall (x y: Q),
   Qlt_bool x y = false <-> ~ x < y.
 Proof.
-  intros. split. Admitted.
+  intros. split.
+  - intros H. unfold Qlt_bool in H. unfold andb in H.
+    destruct (Qle_bool x y) eqn: H1.
+    + destruct (Qeq_bool y x) eqn: H2.
+      * apply Qeq_bool_iff in H2. unfold not. intro H3.
+        apply Qlt_not_eq in H3. unfold not in H3. apply Qeq_sym in H2.
+        apply H3 in H2. auto.
+      * simpl in H. inversion H.
+    + unfold not. intro H2. apply Qlt_le_weak in H2.
+      apply Qle_bool_iff in H2. rewrite H2 in H1. inversion H1.
+  - intros H. unfold not in H. unfold Qlt_bool. unfold andb.
+    destruct (Qle_bool x y) eqn: H1.
+    + apply Qle_bool_iff in H1. apply Qle_lteq in H1.
+      inversion H1 as [H2 | H3].
+      * apply H in H2. inversion H2.
+      * apply Qeq_sym in H3. apply Qeq_bool_iff in H3. rewrite H3.
+        reflexivity.
+    + reflexivity.
+Qed.
+
+Lemma Qle_bool_not_iff: forall (x y: Q),
+  Qle_bool x y = false <-> ~ x <= y.
+Proof.
+  intros. split.
+  - intros H. unfold not. intros H1. apply Qle_bool_iff in H1.
+    rewrite H1 in H. inversion H.
+  - intros H. unfold not in H. destruct (Qle_bool x y) eqn: H'.
+    + apply Qle_bool_iff in H'. apply H in H'. inversion H'.
+    + reflexivity.
+Qed.
+
+Lemma LessThanOneFactor: forall (x y z: Q),
+  Qlt_bool 0 z = true /\ Qlt_bool x z = true /\ 
+  Qle_bool 0 y = true /\ Qle_bool y 1 = true -> Qlt_bool (y * x) z = true.
+Proof.
+  intros. inversion H as [H1 [H2 [H3 H4]]].
+  apply Qlt_bool_iff in H1.
+  apply Qlt_bool_iff in H2.
+  apply Qle_bool_iff in H3.
+  apply Qle_bool_iff in H4.
+  apply Qlt_bool_iff.
+  rewrite Qmult_comm.
+  apply Qle_lteq in H3.
+  apply Qle_lteq in H4.
+  inversion H3 as [H5 | H6].
+  - inversion H4 as [H7 | H8].
+    + generalize (Qmult_lt_r x z y); intro HQL.
+      generalize (Qmult_lt_r y 1 z); intro HQ1.
+      apply HQL in H5. apply HQ1 in H1.
+          apply H5 in H2. apply H1 in H7. rewrite Qmult_comm in H7.
+          rewrite Qmult_1_l in H7.
+          generalize (Qlt_trans (x * y) (z * y) z); intro HQT.
+          apply HQT in H2. auto. auto.
+    + rewrite H8. rewrite Qmult_1_r. auto. 
+  - rewrite <- H6. rewrite Qmult_0_r. auto. 
+Qed. 
+
+Lemma LastOutputZero: forall (l: list nat) (N M: Neuron),
+  Eq_Neuron2 M (AfterNsteps (ResetNeuron N) l) /\ 
+  (beq_nat (length (Weights N)) 1%nat) = true /\  
+  Qlt_bool (Current M) (Tau M) = true -> 
+  beq_nat (hd 1%nat (Output M)) 0%nat = true.
+Proof.
+  destruct l as [|h t].
+  - intros. unfold Eq_Neuron2 in H. simpl in H.
+    inversion H as [H1 H2]. inversion H1 as [H3 [H4 [H5 H6]]].
+    rewrite H3. simpl. reflexivity.
+  - intros. generalize (Unchanged (ResetNeuron N) (h::t)); intro HU.
+    unfold Eq_Neuron2 in H. inversion H as [H1 [H2 H3]].
+    inversion H1 as [H4 [H5 [H6 [H7 H8]]]]. 
+    inversion HU as [HU1 [HU2 HU3]]. 
+    generalize (ResetUnchanged N); intro HR. 
+    inversion HR as [HR1 [HR2 HR3]]. rewrite <- HR3 in HU3.
+    rewrite <- HU3 in H5. rewrite <- H5 in H2.
+    apply ListForm in H2. destruct H2 as [hq H2].
+    destruct (Output M) as [|h' t'].
+    + inversion H4.
+    + inversion H4. simpl.
+      remember (AfterNsteps (ResetNeuron N) t)as T.
+      unfold NextOutput.
+      unfold NextPotential.
+      destruct (Qle_bool (Tau T) (Current T)) eqn: H'.
+      * rewrite HU3 in H5. simpl in H5. rewrite <- HeqT in H5.
+        rewrite H5 in H2. rewrite H2. unfold potential.
+        destruct (beq_nat h 0%nat) eqn:HBN.
+        { generalize (PosTau T); intro HPT.
+          destruct (Qle_bool (Tau T) 0) eqn: HQ.
+          { apply Qlt_bool_iff in HPT. apply Qlt_not_le in HPT.
+            unfold not in HPT. apply Qle_bool_iff in HQ.
+            apply HPT in HQ. inversion HQ. }
+          { reflexivity. } }
+        { simpl. simpl in H8. rewrite <- HeqT in H8.
+          unfold NextPotential in H8. rewrite H' in H8.
+          rewrite H2 in H8. unfold potential in H8.
+          rewrite HBN in H8. rewrite <- H8. simpl in H7.
+          rewrite <- HeqT in H7. rewrite <- H7.
+          apply Qlt_bool_iff in H3. apply Qlt_not_le in H3.
+          unfold not in H3.
+          destruct (Qle_bool (Tau M) (Current M)) eqn: HTC.
+          { apply Qle_bool_iff in HTC. apply H3 in HTC.
+            inversion HTC. } { reflexivity. } }
+      * simpl in HU3. rewrite <- HeqT in HU3. 
+        rewrite HU3 in H5. rewrite H5 in H2. rewrite H2. 
+        unfold potential. destruct (beq_nat h 0%nat) eqn:HBN.
+        { rewrite Qplus_0_l. apply Qle_bool_not_iff in H'.
+          apply Qnot_le_lt in H'.
+          generalize (LeakRange T); intro HLT.
+          generalize (LessThanOneFactor (Current T) (Leak_Factor T) (Tau T)); intro HLOF.
+          generalize (PosTau T); intro HP.
+          apply Qlt_bool_iff in H'.
+          assert (HL: Qlt_bool 0 (Tau T) = true /\
+                      Qlt_bool (Current T) (Tau T) = true /\
+                      Qle_bool 0 (Leak_Factor T) = true /\ Qle_bool (Leak_Factor T) 1 = true).
+          { split; auto. }
+          apply HLOF in HL. apply Qlt_bool_iff in HL.
+          apply Qlt_not_le in HL. apply Qle_bool_not_iff in HL.
+          rewrite HL. reflexivity. }
+        { rewrite Qplus_0_l. simpl in H8. rewrite <- HeqT in H8.
+          unfold NextPotential in H8. rewrite H' in H8.
+          rewrite H2 in H8. unfold potential in H8. rewrite HBN in H8.
+          rewrite Qplus_0_l in H8. rewrite <- H8. simpl in H7.
+          rewrite <- HeqT in H7. rewrite <- H7.
+          apply Qlt_bool_iff in H3. apply Qlt_not_le in H3.
+          apply Qle_bool_not_iff in H3. rewrite H3. reflexivity. }
+Qed.
+
+Lemma AddPos: forall (x y z: Q),
+  Qle_bool x y = true /\ Qle_bool 0 z = true -> Qle_bool x (y + z) = true.
+Proof.
+  intros. inversion H as [H1 H2].
+  apply Qle_bool_iff in H1.
+  apply Qle_bool_iff in H2.
+  apply Qle_bool_iff.
+  generalize (Qplus_le_compat x y 0 z); intro HQLC.
+  apply HQLC in H1. rewrite Qplus_0_r in H1. auto. auto.
+Qed.
 
 Lemma Eq_reverse: forall (m n: Q),
   Qlt_bool m n = true <-> Qle_bool n m = false.
@@ -506,7 +651,17 @@ Proof.
     + unfold Qlt_bool in H0. unfold andb in H0. destruct (Qle_bool n m) eqn: H1.
       * inversion H.
       * destruct (Qle_bool m n) eqn: H2.
-        { 
+        { destruct (Qeq_bool n m) eqn: H'.
+          { apply Qeq_bool_iff in H'. 
+            assert (H3: forall x y: Q, x == y -> x <= y).
+            { intros. apply Qle_lteq. auto. }
+            apply H3 in H'. apply Qle_bool_iff in H'. rewrite H' in H1.
+            inversion H1. }
+          { simpl in H0. inversion H0. } }
+        { apply Qle_bool_not_iff in H2. apply Qle_bool_not_iff in H1.
+          apply Qnot_le_lt in H2. apply Qlt_le_weak in H2.
+          unfold not in H1. apply H1 in H2. inversion H2. }
+Qed.
 
 Lemma LessEqTransivity: forall (n m p: Q),
   Qlt_bool n m = true /\ Qle_bool m p = true -> Qlt_bool n p = true.
@@ -515,50 +670,49 @@ Proof.
   apply Qlt_bool_iff. generalize (Qlt_le_trans n m p); intro HQLT. auto.
 Qed.
 
-Lemma AlwaysPos: forall (N: Neuron) (l: list nat),
-  beq_nat (length (Weights N)) 1%nat = true /\ Qle_bool 0 (hd 0 (Weights N)) = true ->
-  Qle_bool 0 (Current (AfterNsteps (ResetNeuron N) l)) = true.
+Lemma AlwaysPos: forall (l: list nat) (N: Neuron),
+  beq_nat (length (Weights N)) 1%nat = true /\
+  Qle_bool 0 (hd 0 (Weights N)) = true
+  -> Qle_bool 0 (Current (AfterNsteps (ResetNeuron N) l)) = true.
 Proof.
-  Admitted. 
-  
-Lemma Unchanged: forall (N: Neuron) (Inputs: list nat),
-  (Leak_Factor N) == Leak_Factor (AfterNsteps N Inputs) /\ 
-  (Tau N) == (Tau (AfterNsteps N Inputs)) /\
-  (Weights N) = (Weights (AfterNsteps N Inputs)).
-Proof.
-  Admitted.
-
-Lemma ResetUnchanged: forall (N: Neuron),
-  (Leak_Factor N) == Leak_Factor (ResetNeuron N) /\ 
-  (Tau N) == (Tau (ResetNeuron N)) /\
-  (Weights N) = (Weights (ResetNeuron N)).
-Proof.
-  intros. simpl. split.
-  - reflexivity.
-  - split.
-    + reflexivity.
-    + reflexivity.
+  induction l as [|h t].
+  - intros. simpl. reflexivity.
+  - intros. inversion H as [H1 H2]. 
+    apply ListForm in H1. destruct H1 as [hq H1].
+    rewrite H1 in H2. simpl in H2. simpl. 
+    remember (AfterNsteps (ResetNeuron N) t) as T.
+    generalize (ResetUnchanged N); intro HRU.
+    inversion HRU as [HRU1 [HRU2 HRU3]].
+    generalize (Unchanged (ResetNeuron N) t); intro HU.
+    inversion HU as [HU1 [HU2 HU3]]. rewrite <- HeqT in HU3.
+    rewrite HU3 in HRU3. rewrite HRU3 in H1.
+    unfold NextPotential. 
+    destruct (Qle_bool (Tau T) (Current T)) eqn: H'.
+    + rewrite H1. unfold potential. 
+      destruct (beq_nat h 0%nat) eqn: HBN.
+      * reflexivity.
+      * rewrite Qplus_0_l. apply H2.
+    + rewrite H1. unfold potential.
+      destruct (beq_nat h 0%nat) eqn: HBN.
+      * rewrite Qplus_0_l. generalize (IHt N); intro IH.
+        apply IH in H. rewrite <- HeqT in H.
+        generalize (LeakRange T); intro HLR.
+        inversion HLR as [HLR1 HLR2].
+        apply Qle_bool_iff in H. apply Qle_bool_iff in HLR1.
+        generalize (Qmult_le_0_compat (Leak_Factor T) (Current T)); intro HQ.
+        apply Qle_bool_iff. apply HQ in HLR1. auto. auto.
+      * rewrite Qplus_0_l. generalize (IHt N); intro IH.
+        apply IH in H. rewrite <- HeqT in H.
+        generalize (LeakRange T); intro HLR.
+        inversion HLR as [HLR1 HLR2].
+        apply Qle_bool_iff in H. apply Qle_bool_iff in HLR1.
+        generalize (Qmult_le_0_compat (Leak_Factor T) (Current T)); intro HQ.
+        apply Qle_bool_iff in H2.
+        generalize (Qplus_le_compat 0 hq 0 (Leak_Factor T * Current T)); intro HC.
+        apply HC in H2. rewrite Qplus_0_l in H2. apply Qle_bool_iff. auto.
+        apply HQ in HLR1. auto. auto.
 Qed.
-   
-
-Lemma AddZero: forall (x: Q),
-  0 + x == x.
-Proof.
-  apply Qplus_0_l.
-Qed.
-
-Lemma AddCommutive: forall (x y: Q),
-  x + y == y + x.
-Proof.
-  apply Qplus_comm.
-Qed.
-
-Lemma MultZero: forall (x: Q),
-  x * 0 == 0.
-Proof.
-  apply Qmult_0_r.
-Qed.
-
+               
 Lemma LessThanEq: forall (x y: Q),
   Qlt_bool x y = true -> Qle_bool x y = true.
 Proof.
@@ -572,16 +726,11 @@ Proof.
     + inversion H.
 Qed.
 
-Lemma LessThanOneFactor: forall (x y z: Q),
-  Qlt_bool x z = true /\ Qle_bool 0 y = true /\ Qle_bool y 1 = true -> Qlt_bool (y * x) z = true.
-Proof.
-  intros. Admitted.
-
 Lemma Delayer_Property: forall (Inputs: list nat) (N M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
   Bin_List Inputs /\ 
-  Qle_bool (Tau M) (hd 0 (Weights M)) = true -> (Delayer_Effect Inputs (Output M)).
+  Qle_bool (Tau N) (hd 0 (Weights N)) = true -> (Delayer_Effect Inputs (Output M)).
 Proof.
   induction Inputs as [|h1 l1].
   - intros N M [H1 [H2 [H3 H4]]]. simpl in H2. unfold Eq_Neuron2 in H2. simpl in H2. inversion H2 as [ H1' [H2' [H3' [H4' H5']]]].
@@ -595,24 +744,25 @@ Proof.
       remember (AfterNsteps (ResetNeuron N) l1) as T.
       assert (H': (beq_nat (length (Weights N)) 1%nat) = true /\ 
                   Eq_Neuron2 T (AfterNsteps (ResetNeuron N) l1) /\
-                  Bin_List l1 /\ Qle_bool (Tau T) (hd 0 (Weights T)) = true).
+                  Bin_List l1 /\ Qle_bool (Tau N) (hd 0 (Weights N)) = true).
       { split.
         { apply H1. }
         { split.
           { rewrite <- HeqT. unfold Eq_Neuron2. split; auto. split; auto. split; unfold Qeq; auto. }
           { split. 
             { simpl in H3. inversion H3 as [H6' H7']. apply H7'. } 
-            { rewrite <- H2'. rewrite <- H4'. apply H4. } } } }
+            { apply H4. } } } }
       apply IHl1 in H'. 
       generalize (ResetUnchanged N); intro HRU.
       generalize (Unchanged (ResetNeuron N) l1); intro HU.
       inversion HRU as [HRU3 [HRU2 HRU1]]. inversion HU as [HU3 [HU2 HU1]].
-      clear HRU3. clear HRU2. clear HU3. clear HU2. clear HRU. clear HU. rename HRU1 into HRU. rename HU1 into HU.
-      rewrite <- HeqT in HU. rewrite HU in HRU.
+      clear HRU3. clear HU3. clear HRU. clear HU.
+      rewrite <- HeqT in HU1. rewrite HU1 in HRU1.
+      rewrite <- HeqT in HU2. rewrite HU2 in HRU2.
       rewrite H0 in H1'. unfold NextOutput in H1'.
       (assert (exists hq: Q, Weights T = hq::nil)).
-      { rewrite HRU in H1. apply ListForm in H1. apply H1. }
-      destruct H as [hw H]. rewrite H2' in H4. rewrite H in H4. simpl in H4. rewrite H4' in H4.
+      { rewrite HRU1 in H1. apply ListForm in H1. apply H1. }
+      destruct H as [hw H]. rewrite HRU1 in H4. rewrite H in H4. simpl in H4. rewrite HRU2 in H4.
       simpl. split.
       { destruct (Qle_bool (Tau T) (Current T)) eqn: HTC.
             { destruct (beq_nat h1 0%nat) eqn: HBN.
@@ -621,27 +771,29 @@ Proof.
                 generalize (PosTau T); intro HPT. apply Eq_reverse in HPT. rewrite HPT in H1'.
                 inversion H1'. apply HBN. }
               { unfold NextPotential in H1'. rewrite HTC in H1'. rewrite H in H1'.
-                unfold potential in H1'. rewrite HBN in H1'. rewrite AddZero in H1'.
+                unfold potential in H1'. rewrite HBN in H1'. rewrite Qplus_0_l in H1'.
                 rewrite H4 in H1'. inversion H1'. simpl in H3.
                 inversion H3 as [H8 H9]. unfold orb in H8. rewrite HBN in H8. apply H8. } }    
            { destruct (beq_nat h1 0%nat) eqn: HBN.
               { unfold NextPotential in H1'. rewrite HTC in H1'. rewrite H in H1'.
-                unfold potential in H1'. rewrite HBN in H1'. rewrite AddZero in H1'.
+                unfold potential in H1'. rewrite HBN in H1'. rewrite Qplus_0_l in H1'.
                 generalize (LeakRange T); intro HLR. apply Eq_reverse in HTC.
-                assert (HRel: Qlt_bool (Current T) (Tau T) = true /\ 
+                generalize (PosTau T); intro HPT.
+                assert (HRel: Qlt_bool 0 (Tau T) = true /\
+                              Qlt_bool (Current T) (Tau T) = true /\ 
                               Qle_bool 0 (Leak_Factor T) = true /\ 
                               Qle_bool (Leak_Factor T) 1 = true). { split; auto. }
                 apply LessThanOneFactor in HRel. apply Eq_reverse in HRel.
                 rewrite HRel in H1'. inversion H1'. apply HBN. }
               { unfold NextPotential in H1'. rewrite HTC in H1'. rewrite H in H1'.
-                unfold potential in H1'.  rewrite HBN in H1'. rewrite AddZero in H1'.
+                unfold potential in H1'.  rewrite HBN in H1'. rewrite Qplus_0_l in H1'.
                 generalize (PosTau T); intro HPT.
                 assert (H7: Qlt_bool 0 (Tau T) = true /\ Qle_bool (Tau T) hw = true). { auto. }
                 apply LessEqTransivity in H7. apply LessThanEq in H7.
                 assert (H8: beq_nat (length (Weights N)) 1%nat = true /\ Qle_bool 0 (hd 0 (Weights N)) = true).
                 {  split. { apply H1. } 
-                          { rewrite HRU. rewrite H. simpl. apply H7. }  } 
-                generalize (AlwaysPos N l1); intro HAT. apply HAT in H8. rewrite <- HeqT in H8.
+                          { rewrite HRU1. rewrite H. simpl. apply H7. }  } 
+                generalize (AlwaysPos l1 N); intro HAT. apply HAT in H8. rewrite <- HeqT in H8.
                 generalize (LeakRange T); intro HLR. inversion HLR as [HLR1 HLR2].
                 assert (H9: Qle_bool 0 (Leak_Factor T) = true /\ Qle_bool 0 (Current T) = true). { auto. }
                 apply PosMult in H9.
@@ -655,7 +807,7 @@ Lemma Filter_Property: forall (Inputs: list nat) (N M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
   Bin_List Inputs /\ 
-  Qle_bool (Tau M) (hd 0 (Weights M)) = false /\ 
+  Qle_bool (Tau N) (hd 0 (Weights N)) = false /\ 
   Inputs <> nil -> (Filter_Effect (Output M)).
 Proof.
   induction Inputs as [|h1 l1].
@@ -675,77 +827,87 @@ Proof.
         { unfold NextOutput. simpl. unfold NextPotential. simpl. 
           apply Eq_reverse in HPT. rewrite HPT. simpl.
           apply ListForm in H1. destruct H1 as [hn H1]. rewrite H1. unfold potential.
-          rewrite HBN. simpl. rewrite AddZero. rewrite MultZero. rewrite HPT. simpl. auto. }
+          rewrite HBN. simpl. rewrite Qplus_0_l. rewrite Qmult_0_r. rewrite HPT. simpl. auto. }
         { unfold NextOutput. simpl. unfold NextPotential. simpl.
           apply Eq_reverse in HPT. rewrite HPT.
           apply ListForm in H1. destruct H1 as [hn H1]. rewrite H1. unfold potential. 
-          rewrite HBN. rewrite MultZero. rewrite AddZero. rewrite AddCommutive. rewrite AddZero.
+          rewrite HBN. rewrite Qmult_0_r. rewrite Qplus_0_l. rewrite Qplus_comm. rewrite Qplus_0_l.
           assert (H8: (Weights T) = Weights N). { rewrite HeqT. simpl. reflexivity. }
           assert (H9: (Tau T) == (Tau N)). { rewrite HeqT. simpl. reflexivity. }
-          rewrite <- H2' in H8. rewrite <- H4' in H9. rewrite H8 in H4. rewrite H9 in H4.
+          rewrite <- H2' in H8. rewrite <- H4' in H9. (*rewrite H8 in H4. rewrite H9 in H4.*)
           rewrite H1 in H4. simpl in H4. rewrite H4. auto. }
-      * assert (H': (beq_nat (length (Weights N)) 1%nat) = true /\ 
+      * generalize (ResetUnchanged N); intro HRU.
+        generalize (Unchanged (ResetNeuron N) l1); intro HU.
+        inversion HRU as [HRU3 [HRU1 HRU2]]. inversion HU as [HU3 [HU1 HU2]].
+        clear HRU3. clear HU3. rewrite <- Head in HeqT.
+        rewrite <- HeqT in HU1. rewrite <- HeqT in HU2. rewrite HU1 in HRU1. rewrite HU2 in HRU2.
+        assert (H': (beq_nat (length (Weights N)) 1%nat) = true /\ 
                   Eq_Neuron2 T (AfterNsteps (ResetNeuron N) l1) /\
                   Bin_List l1 /\ Qle_bool (Tau T) (hd 0 (Weights T)) = false /\
                   l1 <> nil).
-       { split.
-         { apply H1. }
-         { split.
-           { rewrite <- Head in HeqT. rewrite <- HeqT. unfold Eq_Neuron2.
-             split; auto. split; auto. split; auto. split; auto. split; auto. split; auto. split; auto. }
-             split.
-             { rewrite <- Head in H3. simpl in H3. inversion H3 as [H6 H7]. apply H7. }
-               split.
-               { rewrite <- H2'. rewrite <- H4'. apply H4. }
-               { unfold not. intro H6. rewrite Head in H6. inversion H6. } } }
-       rewrite Head in H'. apply IHl1 in H'. rewrite H0 in H1'.
-       unfold NextOutput in H1'. unfold NextPotential in H1'.
-       apply ListForm in H1. destruct H1 as [hn Hnew].
-       generalize (ResetUnchanged N); intro HRU.
-       generalize (Unchanged (ResetNeuron N) l1); intro HU.
-       inversion HRU as [HRU3 [HRU1 HRU2]]. inversion HU as [HU3 [HU1 HU2]].
-       clear HRU3. clear HU3. rewrite <- Head in HeqT.
-       rewrite <- HeqT in HU1. rewrite <- HeqT in HU2. rewrite HU1 in HRU1. rewrite HU2 in HRU2.
-       rewrite Hnew in HRU2. rewrite H4' in H4. apply Eq_reverse in HPT. rewrite HRU1 in HPT.
-       destruct (Qle_bool (Tau T) (Current T)) eqn: HTC.
-       { destruct (beq_nat h1 0%nat) eqn: HBN. 
-         { rewrite <- HRU2 in H1'. unfold potential in H1'. rewrite HBN in H1'.
-           rewrite HPT in H1'. inversion H1'.
-           generalize (HeadZeroFilter (Output M)); intro HZF.
-           assert (H7: beq_nat (hd 1%nat (Output M)) 0%nat = true /\ Filter_Effect (tl (Output M))).
-           { split. 
-             { rewrite H0. simpl. rewrite H1. simpl. reflexivity. }
-             { rewrite H0. simpl. rewrite <- H6 in H'. apply H'. }  }
-           apply HZF in H7. rewrite <- H1. rewrite <- H6. rewrite <- H0. apply H7.  }
-         { rewrite <- HRU2 in H1'. unfold potential in H1'. rewrite HBN in H1'.
-           rewrite AddZero in H1'. rewrite <- HRU2 in H2'. rewrite H2' in H4.
-           simpl in H4. rewrite H4 in H1'. inversion H1'.
-           generalize (HeadZeroFilter (Output M)); intro HZF.
-           assert (H7: beq_nat (hd 1%nat (Output M)) 0%nat = true /\ Filter_Effect (tl (Output M))).
-           { split. 
-             { rewrite H0. simpl. rewrite H1. simpl. reflexivity. }
-             { rewrite H0. simpl. rewrite <- H6 in H'. apply H'. }  }
-           apply HZF in H7. rewrite <- H1. rewrite <- H6. rewrite <- H0. apply H7.  }  }
-       { generalize (LastOutputZero T); intro HLO. generalize (TailStartZeroFilter (Output M)); intro HTZ.
-         rewrite <- Eq_reverse in HTC. apply HLO in HTC.
-         assert (H6: beq_nat (hd 1%nat (tl (Output M))) 0%nat = true /\ Filter_Effect (tl (Output M))).
-         { split.
-           { rewrite H0. simpl. inversion H1'. apply HTC. }
-           { rewrite H0. simpl. inversion H1'. apply H'. } }
-         apply HTZ in H6. rewrite <- H0. apply H6. }
-Qed.    
-       
+        { split.
+          { apply H1. }
+          { split.
+            { rewrite <- HeqT. unfold Eq_Neuron2.
+              split; auto. split; auto. split; auto. split; auto. split; auto. split; auto. split; auto. }
+              split.
+              { rewrite <- Head in H3. simpl in H3. inversion H3 as [H6 H7]. apply H7. }
+                split.
+                { rewrite <- H2'. rewrite <- H4'. rewrite <- HRU1 in H4'.
+                  rewrite <- HRU2 in H2'. rewrite <- H2' in H4. rewrite <- H4' in H4. apply H4. }
+                { unfold not. intro H6. rewrite Head in H6. inversion H6. } } }
+        rewrite Head in H'. rewrite <- HRU1 in H'. rewrite <- HRU2 in H'. 
+        apply IHl1 in H'. rewrite H0 in H1'.
+        unfold NextOutput in H1'. unfold NextPotential in H1'.
+        apply ListForm in H1. destruct H1 as [hn Hnew].
+        rewrite Hnew in HRU2. apply Eq_reverse in HPT. rewrite HRU1 in HPT.
+        destruct (Qle_bool (Tau T) (Current T)) eqn: HTC.
+        { destruct (beq_nat h1 0%nat) eqn: HBN. 
+          { rewrite <- HRU2 in H1'. unfold potential in H1'. rewrite HBN in H1'.
+            rewrite HPT in H1'. inversion H1'.
+            generalize (HeadZeroFilter (Output M)); intro HZF.
+            assert (H7: beq_nat (hd 1%nat (Output M)) 0%nat = true /\ Filter_Effect (tl (Output M))).
+            { split. 
+              { rewrite H0. simpl. rewrite H1. simpl. reflexivity. }
+              { rewrite H0. simpl. rewrite <- H6 in H'. apply H'. }  }
+            apply HZF in H7. rewrite <- H1. rewrite <- H6. rewrite <- H0. apply H7.  }
+          { rewrite <- HRU2 in H1'. unfold potential in H1'. rewrite HBN in H1'.
+            rewrite Qplus_0_l in H1'. rewrite <- HRU2 in H2'. rewrite Hnew in H4.
+            simpl in H4. rewrite HRU1 in H4. rewrite H4 in H1'. inversion H1'.
+            generalize (HeadZeroFilter (Output M)); intro HZF.
+            assert (H7: beq_nat (hd 1%nat (Output M)) 0%nat = true /\ Filter_Effect (tl (Output M))).
+            { split. 
+              { rewrite H0. simpl. rewrite H1. simpl. reflexivity. }
+              { rewrite H0. simpl. rewrite <- H6 in H'. apply H'. }  }
+            apply HZF in H7. rewrite <- H1. rewrite <- H6. rewrite <- H0. apply H7.  }  }
+        { generalize (LastOutputZero l1 N T); intro HLO. generalize (TailStartZeroFilter (Output M)); intro HTZ.
+          rewrite <- Eq_reverse in HTC. 
+          assert (H6: Eq_Neuron2 T (AfterNsteps (ResetNeuron N) l1) /\
+                      (length (Weights N) =? 1) = true /\
+                       Qlt_bool (Current T) (Tau T) = true).
+          { split. 
+            { rewrite <- HeqT. unfold Eq_Neuron2. 
+              split. reflexivity. split. reflexivity. split. reflexivity. split; reflexivity. }
+            { split. rewrite Hnew. reflexivity. auto. } }
+          apply HLO in H6.
+          assert (H7: beq_nat (hd 1%nat (tl (Output M))) 0%nat = true /\ Filter_Effect (tl (Output M))).
+          { split.
+            { rewrite H0. simpl. inversion H1'. apply H6. }
+            { rewrite H0. simpl. inversion H1'. apply H'. } }
+          apply HTZ in H7. rewrite <- H0. apply H7. }
+Qed.
+
 Theorem Property1: forall (Inputs: list nat) (N: Neuron) (M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
   Bin_List Inputs                        -> (Delayer_Effect Inputs (Output M)) \/ (Filter_Effect (Output M)).
 Proof.
   intros. inversion H as [H1 [H2 H3]].
-  destruct (Qle_bool (Tau M) (hd 0 (Weights M))) eqn: H'.
+  destruct (Qle_bool (Tau N) (hd 0 (Weights N))) eqn: H'.
   - assert (H4: (beq_nat (length (Weights N)) 1%nat) = true /\
                 Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
                 Bin_List Inputs /\ 
-                Qle_bool (Tau M) (hd 0 (Weights M)) = true). { split; auto. }
+                Qle_bool (Tau N) (hd 0 (Weights N)) = true). { split; auto. }
     apply Delayer_Property in H4. left. apply H4.
   - destruct Inputs as [|h1 l1] eqn: HI.
     + left. simpl in H2. unfold Eq_Neuron2 in H2. inversion H2 as [H1' [H2' [H3' [H4' H5']]]].
@@ -753,7 +915,7 @@ Proof.
     + assert (H4: (beq_nat (length (Weights N)) 1%nat) = true /\
                   Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
                   Bin_List Inputs /\ 
-                  Qle_bool (Tau M) (hd 0 (Weights M)) = false /\ 
+                  Qle_bool (Tau N) (hd 0 (Weights N)) = false /\ 
                   Inputs <> nil).
       { split. (*repeat split; auto.*)
         { apply H1. }
@@ -772,38 +934,39 @@ Theorem Series2: forall (Inputs: list nat) (N1 N2 N3: Neuron),
   Eq_Neuron2 N2 (AfterNsteps (ResetNeuron N1) Inputs) /\
   Eq_Neuron2 N3 (AfterNsteps N2 (Output N2)) /\
   Bin_List Inputs /\ 
-  Qle_bool (Tau N2) (hd 0 (Weights N2)) = true /\
-  Qle_bool (Tau N3) (hd 0 (Weights N3)) = true
+  Qle_bool (Tau N1) (hd 0 (Weights N1)) = true /\
+  Qle_bool (Tau N2) (hd 0 (Weights N2)) = true
     -> Output N3 = Inputs ++ [0%nat; 0%nat].
 Proof.
   intros. inversion H as [H1 [H2 [H3 [H4 [H5 H6]]]]].
   generalize (Delayer_Property Inputs N1 N2); intro HDI.
   assert (H': (length (Weights N1) =? 1) = true /\
               Eq_Neuron2 N2 (AfterNsteps (ResetNeuron N1) Inputs) /\
-              Bin_List Inputs /\ Qle_bool (Tau N2) (hd 0 (Weights N2)) = true).
+              Bin_List Inputs /\ 
+              Qle_bool (Tau N1) (hd 0 (Weights N1)) = true).
   { split; auto. } apply HDI in H'. clear H'.
   generalize (Delayer_Property (Output N2) N2 N3); intro HDO.
   assert (H': (length (Weights N2) =? 1) = true /\
               Eq_Neuron2 N3 (AfterNsteps (ResetNeuron N2) (Output N2)) /\
               Bin_List Inputs /\ Qle_bool (Tau N3) (hd 0 (Weights N3)) = true).
   { split; try tauto. Admitted. (*} apply HDO in H'.
-  rewrite H5 in H6. Admitted.*)
+  rewrite H5 in H6. Admitted.
 
-(*Theorem DecreaseNones: forall (N1 N2 N3: Neuron) (Inputs: list nat),
+Theorem DecreaseNones: forall (N1 N2 N3: Neuron) (Inputs: list nat),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Eq_Neuron2 N3 (AfterNsteps (ResetNeuron N2) Inputs) /\
   Bin_List Inputs /\ 
    ->*) 
-Theorem NegativeWeight: forall (M N: Neuron) (Out Inputs: list nat),
+Theorem NegativeWeight: forall (M N: Neuron) (Inputs: list nat),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Qlt_bool (hd 0 (Weights N)) 0  = true /\
-  Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\ 
-  Out = Output M -> ~(In 1%nat (Output M)).
+  Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) (*/\ 
+  Out = Output M*) -> ~(In 1%nat (Output M)).
 Proof.
   intro M. induction (Output M) as [|h t].
   (*Have variable M as the first variable and do intro M and induction on Output M*)
   - intros. intros H'. unfold In in H'. apply H'.
-  - intros H'. inversion H as [H1 [H2 H3]]. unfold Eq_Neuron2 in H3.
+  - intros N Inputs H. unfold not. inversion H as [H1 [H2 H3]]. unfold Eq_Neuron2 in H3.
     inversion H3 as [ H1' [H2' [H3' [H4' H5']]]]. simpl in H'. 
 
 Theorem SeriesN: forall (Inputs: list nat) (NeuronList: list Neuron),
