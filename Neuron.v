@@ -53,6 +53,34 @@ Fixpoint Bin_List (In: list nat): Prop :=
   | h::t => (orb (beq_nat h 0%nat) (beq_nat h 1%nat)) = true /\ (Bin_List t)
 end.
 
+Fixpoint Index (l: list nat) (ind: nat) (def: nat): nat :=
+  match ind with
+  | O => match l with
+         | nil => def
+         | h::t => h
+        end
+  | S n' => match l with
+            | nil => def
+            | h::t => (Index t (ind - 1) (def))
+            end
+end.
+
+Fixpoint Index1 (l: list nat) (ind: nat) (def: nat): nat :=
+  match ind with
+  | O => def
+  | S O => match l with
+            | nil => def
+            | h::t => h
+            end
+  | S n' => match l with
+            | nil => def
+            | h::t => (Index1 t (ind - 1) (def))
+            end
+end.
+
+Compute (Index [2;5;6;7;9;10] 3 100).
+Compute (Index1 [2;5;6;7;9;10] 3 100).
+
 Check Qle_bool.
 
 Definition NextPotential (N: Neuron) (Inputs: list nat): Q :=
