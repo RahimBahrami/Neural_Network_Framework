@@ -65,8 +65,8 @@ Inductive series2values : nat -> Neuron -> Neuron -> list Q -> list Q -> Prop :=
     nth (Output N2) 0%nat = (Some 0%nat) ->
     series2values 0 N1 N2 [0] [0]
 | (* This case processes the next input *)
-  s2v_next : forall (t:nat) (N1 N2: Neuron) (P1 P2: list Q) (Input:Q)
-                      (N1o N2o N1o' N2o':nat) (N1w0 N1w1 N2w:Q) (qN1o qN2o:Q),
+  s2v_next : forall (t:nat) (N1 N2: Neuron) (P1 P2: list Q) 
+                    (N1o N2o N1o' N2o':nat) (Input:Q) (N1w0 N1w1 N2w qN1o qN2o p1' p2':Q),    
     (((S t) mod 3 = 1%nat /\ Input = 0) \/
      ((S t) mod 3 = 2%nat /\ Input = 1) \/
      ((S t) mod 3 = 0%nat /\ Input = 1)) ->
@@ -80,9 +80,11 @@ Inductive series2values : nat -> Neuron -> Neuron -> list Q -> list Q -> Prop :=
     binQ N1o = (Some qN1o) ->
     binQ N2o = (Some qN2o) ->
     (* The following are calculated from the known information *)
-    N1o' = 0%nat -> (* calculation of N1's next output still to be filled in *)
-    N2o' = 0%nat -> (* calculation of N2's next output still to be filled in *)
+    p1' = (qN2o*N1w1)+(Input*N1w0) ->
+    p2' = qN1o*N2w ->
+    N1o' = (if (Qlt_bool p1' (Tau N1)) then 0%nat else 1%nat) ->
+    N2o' = (if (Qlt_bool p2' (Tau N2)) then 0%nat else 1%nat) ->
     nth (Output N1) (S t) = (Some N1o'%nat) ->
     nth (Output N2) (S t) = (Some N2o'%nat) ->
-    series2values (S t) N1 N2 (P1 ++ [(qN2o*N1w1)+(Input*N1w0)]) (P2 ++ [qN1o*N2w]).
+    series2values (S t) N1 N2 (P1 ++ [p1']) (P2 ++ [p2']).
 
