@@ -277,8 +277,8 @@ Inductive series2values : nat -> Neuron -> Neuron -> list Q -> list Q -> Prop :=
     binQ N1o = (Some qN1o) ->
     binQ N2o = (Some qN2o) ->
     (* The following are calculated from the known information *)
-    p1' = (qN2o*N1w1)+(Input*N1w0) ->
-    p2' = qN1o*N2w ->
+    p1' == (qN2o*N1w1)+(Input*N1w0) ->
+    p2' == qN1o*N2w ->
     N1o' = (if (Qlt_bool p1' (Tau N1)) then 0%nat else 1%nat) ->
     N2o' = (if (Qlt_bool p2' (Tau N2)) then 0%nat else 1%nat) ->
     nth (Output N1) (S t) = (Some N1o'%nat) ->
@@ -541,6 +541,17 @@ Proof.
   - simpl in H. apply LengthZero in H. rewrite H. exists h. reflexivity.
 Qed.
 
+Lemma ListForm2: forall (l:list Q),
+  (beq_nat (length l) 2%nat) = true -> exists hq1 hq2:Q, l = hq1::hq2::nil.
+Proof.
+  intros. destruct l as [|h t].
+  - simpl in H. inversion H.
+  - destruct t as [|h' t'].
+    + simpl in H. inversion H.
+    + simpl in H. apply LengthZero in H. rewrite H.
+      exists h. exists h'. reflexivity.
+Qed.
+
 Lemma ResetUnchanged: forall (N: Neuron),
   (Leak_Factor N) == Leak_Factor (ResetNeuron N) /\ 
   (Tau N) == (Tau (ResetNeuron N)) /\
@@ -575,6 +586,12 @@ Proof.
         rewrite H1 in H. generalize (Qeq_refl x); intro HQR. apply H in HQR. inversion HQR.
       * reflexivity.
     + apply Qlt_le_weak in H. apply Qle_bool_iff in H. rewrite H in H0. inversion H0.
+Qed.
+
+Instance Qltb_comp : Proper (Qeq==>Qeq==>eq) Qlt_bool.
+Proof.
+ intros p q H r s H'; apply eq_true_iff_eq.
+ rewrite 2 Qlt_bool_iff, H, H'; split; auto with qarith.
 Qed.
 
 Lemma Qlt_bool_not_iff: forall (x y: Q),
@@ -709,7 +726,7 @@ Qed.
 Lemma AddPos: forall (x y z: Q),
   Qle_bool x y = true /\ Qle_bool 0 z = true -> Qle_bool x (y + z) = true.
 Proof.
-  intros. inversion H as [H1 H2].
+  intros. inversion H as [H1 H2]. 
   apply Qle_bool_iff in H1.
   apply Qle_bool_iff in H2.
   apply Qle_bool_iff.
@@ -812,18 +829,41 @@ Lemma BinOutput: forall (l: list nat) (ind: nat),
 Proof.
   Admitted.
 
+Lemma BinOutputGeneral: forall (l: list nat) (ind: nat),
+  (Bin_List l) -> (nth l ind = Some 0%nat) \/ (nth l ind = Some 1%nat) \/ (nth l ind = None).
+Proof.
+  Admitted.
+
 Lemma LengthCover: forall (l: list nat) (ind: nat),
   (exists k: nat, (nth l ind) = Some k) -> (lt ind (length l)).
 Proof.
   Admitted.
 
-Lemma Qequality: forall (x y: Q),
-  x = y <-> x == y.
+Lemma ZeroEqual: forall (z: positive),
+  0 == 0 # z.
 Proof.
-  intros. split. 
-  - intros. rewrite H. reflexivity. 
-  - intros. (*unfold Qeq in H. simpl.*)
+  intros. unfold Qeq. simpl. reflexivity.
+Qed.
+
+Lemma FirstElement: forall (l: list Q),
+  (1%nat <=? (length l)) = true -> (nth l 0) = Some (hd 0 l).
+Proof.
   Admitted.
+
+Lemma SecondElement: forall (l: list Q),
+  (2%nat <=? (length l)) = true -> (nth l 1) = Some (hd 0 (tl l)).
+Proof.
+  Admitted.
+
+(*Lemma Reminder3: forall (x: nat),
+  x mod 3 = 0
+Qed.*)
+
+Lemma PlusSides: forall (a b c d: Q),
+  a == b -> c == d -> a + c == b + d.
+Proof.
+  intros. rewrite H. rewrite H0. reflexivity.
+Qed.
 
 Lemma Delayer_Property: forall (Inputs: list nat) (N M: Neuron),
   (beq_nat (length (Weights N)) 1%nat) = true /\
@@ -1056,6 +1096,7 @@ Proof.
   rewrite <- HPA in H2'. simpl in H2'. apply H2'.
 Qed.
 
+
 (*Theorem DecreaseNones: forall (N1 N2 N3: Neuron) (Inputs: list nat),
   (beq_nat (length (Weights N)) 1%nat) = true /\
   Eq_Neuron2 N3 (AfterNsteps (ResetNeuron N2) Inputs) /\
@@ -1148,9 +1189,9 @@ Qed.
 Theorem Steady_Output: forall (P1 P2: list Q) (N1 N2: Neuron),
   (beq_nat (length (Weights N1)) 2%nat) = true ->
   (beq_nat (length (Weights N2)) 1%nat) = true ->
-  (Qle_bool (hd 0 (Weights N1)) (Tau N1))  = true ->
-  (Qle_bool (hd 0 (tl (Weights N1))) (Tau N1))  = true ->
-  (Qle_bool (hd 0 (Weights N2)) (Tau N2))  = true ->
+  (Qle_bool (Tau N1) (hd 0 (Weights N1)))  = true ->
+  (Qle_bool (Tau N1) (hd 0 (tl (Weights N1))))  = true ->
+  (Qle_bool (Tau N2) (hd 0 (Weights N2)))  = true ->
   (*AfterNsteps and potential function*)
   forall (t: nat), 1%nat <? t = true -> 
   (series2values t N1 N2 P1 P2) -> (nth (Output N1) t) = (Some 1%nat).
@@ -1173,10 +1214,56 @@ Proof.
             generalize (Output_Bin N2); intro BLN2.
             generalize (BinOutput (Output N2) 1); intro BON2.
             specialize BON2 with (1:=BLN2) (2:=Htemp).
-            inversion BON2 as [B1 | B2].
-              { rewrite B1 in H11. inversion H11. rewrite <- H25 in H13.
-                inversion H13. rewrite <- H26 in H14. unfold Qmult in H14. (*rewrite Qmult0Helper in H14.*)
-                generalize (Qmult_0_l N1w1); intro QH. unfold Qmult in QH. rewrite QH in H14. unfold Qeq in QH. rewrite <- QH in H14. apply Qequality in QH. rewrite QH in H14.
+            apply ListForm2 in H.
+            destruct H as [hq1 [hq2 H]].
+            generalize (FirstElement (Weights N1)); intro HFE.
+            generalize (SecondElement (Weights N1)); intro HSE.
+            assert (HT1: (1%nat <=? length (Weights N1)) = true).
+            { rewrite H. simpl. reflexivity. }
+            apply HFE in HT1. rewrite H7 in HT1. inversion HT1.
+            assert (HT2: (2%nat <=? length (Weights N1)) = true).
+            { rewrite H. simpl. reflexivity. }
+            apply HSE in HT2. rewrite H8 in HT2. inversion HT2.
+            rewrite <- H25 in H1. inversion BON2 as [B1 | B2].
+              { rewrite B1 in H11. inversion H11. rewrite <- H27 in H13.
+                inversion H13. rewrite <- H28 in H14.
+                rewrite Qmult_0_l in H14. rewrite Qmult_1_l in H14.
+                rewrite Qplus_0_l in H14. rewrite H14 in H16. 
+                apply Qle_bool_iff in H1. apply Qle_not_lt in H1.
+                apply Qlt_bool_not_iff in H1.
+                rewrite H1 in H16. rewrite H16 in H18. apply H18. }
+              { rewrite B2 in H11. inversion H11. rewrite <- H27 in H13.
+                inversion H13. rewrite <- H28 in H14. rewrite Qmult_1_l in H14.
+                rewrite Qmult_1_l in H14. rewrite H14 in H16.
+                rewrite <- H26 in H2. generalize (PosTau N1); intro HPT1.
+                assert (HAP: Qlt_bool (N1w1 + N1w0) (Tau N1) = false).
+                { apply Qlt_bool_iff in HPT1. apply Qlt_le_weak in HPT1.
+                  apply Qle_bool_iff in H1. specialize Qle_trans with (1:= HPT1) (2:= H1); intro HQT.
+                  apply Qle_bool_iff in HQT.
+                  assert (HX: Qle_bool (Tau N1) N1w1 = true /\ Qle_bool 0 N1w0 = true). { auto. } 
+                  apply AddPos in HX. apply Qle_bool_iff in HX.
+                  apply Qle_not_lt in HX. apply Qlt_bool_not_iff in HX. auto. }
+                  rewrite HAP in H16. rewrite H16 in H18. auto. } }
+          { inversion H21 as [H22 H23]. inversion H22. } }
+      * inversion H5.
+        { inversion H20 as [H21 H22]. rewrite H22 in H14.
+          rewrite Qmult_0_l in H14. rewrite Qplus_0_r in H14.
+          generalize (BinOutputGeneral (Output N2) (S (S t1))); intro HBO.
+          generalize (Output_Bin N2); intro HB. apply HBO in HB.
+          inversion HB as [HB1 | [HB2 | HB3]].
+          { rewrite HB1 in H11. inversion H11.
+          
+            admit. }
+        { inversion H20.
+          { inversion H21 as [H22 H23].
+            {
+          
+                
+                
+                generalize (Qmult_1_l N1w0); intro QH2.
+                generalize (PlusSides (0 * N1w1) 0 (1 * N1w0) N1w0); intro QH3.
+                specialize QH3 with (1:=QH) (2:=QH2).
+                 rewrite <- QH3 in H14.
       * (*specialize IHseries2values with (1:=H).*) inversion H5. 
         { apply IHseries2values in H.
         
