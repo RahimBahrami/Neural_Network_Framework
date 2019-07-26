@@ -28,6 +28,8 @@ Fixpoint WeightInRange (Weights: list Q): bool :=
   | h::t => andb (Qle_bool h 1) (Qle_bool (-(1)) h)
 end.
 
+(*We need to connect Current and Output list in the object*)
+
 Record Neuron := MakeNeuron {
   Output: list nat;
   Weights: list Q;
@@ -39,6 +41,19 @@ Record Neuron := MakeNeuron {
   PosTau: Qlt_bool 0 Tau = true;
   WRange: WeightInRange Weights = true
 }.
+
+(*(beq_nat (length (Weights N1)) 2) = true ->
+  (beq_nat (length (Weights N2)) 1%nat) = true ->
+  (w1 == (hd 0 (Weights N1))) ->
+  (w2 == (hd 0 (tl (Weights N1)))) ->
+  (w3 == (hd 0 (Weights N2))) ->
+  (Qle_bool (Tau N1) (Qabs(w2) - w1)) = true ->
+  (Qle_bool (Tau N1) w1) = true ->
+  (Qle_bool (Tau N2) w3)  = true ->
+  All1 Inputs ->
+  Eq_Neuron2 M1 (AfterNArch2N1 (ResetNeuron N1) (ResetNeuron N2) Inputs) ->
+   ->
+  (lt 1%nat t) -> Index (rev (Output M1)) t 1%nat = 1%nat.*)
 
 Fixpoint potential (Weights: list Q) (Inputs: list nat): Q :=
   match Weights, Inputs with
@@ -66,6 +81,18 @@ Fixpoint Eq_ListQ (In: list Q) (Out: list Q): bool :=
   | h::t, h':: t' => (andb (Qeq_bool h h') (Eq_ListQ t t'))
 end.
 
+Fixpoint OneAfterSecond (In: list nat): Prop :=
+  match In with
+  | nil => False
+  | h1::t1 => match t1 with
+              | nil => (beq_nat h1 0%nat) = true
+              | h2::t2 => match t2 with
+                          | nil => (beq_nat h1 0%nat) = true /\ (beq_nat h2 0%nat) = true
+                          | h3::t3 => (beq_nat h1 1%nat) = true /\ OneAfterSecond t1
+                          end
+              end
+end.
+
 Fixpoint Index {T:Type} (l: list T) (ind: nat) (def: T): T :=
   match ind with
   | O => match l with
@@ -77,6 +104,15 @@ Fixpoint Index {T:Type} (l: list T) (ind: nat) (def: T): T :=
             | h::t => (Index t (ind - 1) (def))
             end
 end.
+
+(*Fixpoint RevIndex {T:Type} (l: list T) (ind: nat) (def: T): T :=
+  match ind with
+  | O => match l with
+         | nil => def
+         | h::t => RevIndex t O def
+         end
+  | S ind' => if (beq_nat ind (length l)) then h else (RevIndex T ind')
+end.*)
 
 Fixpoint Index1 {T:Type} (l: list T) (ind: nat) (def: T): T :=
   match ind with
@@ -102,6 +138,21 @@ Fixpoint nth {T:Type} (l: list T) (ind: nat) : option T :=
             | h::t => nth t (ind - 1)
             end
 end.
+
+Fixpoint PatternAcc {T: Type} (P: list T) (l: list T) (ind: nat): Prop :=
+  match P with
+  | nil => True
+  | h::t => if (beq_nat ind ((length l) - 1)) then
+               (nth l ind) = Some h /\ PatternAcc t l 0%nat
+            else
+               (nth l ind) = Some h /\ PatternAcc t l (ind + 1)
+end.
+
+Fixpoint Pattern {T: Type} (P: list T) (l: list T) (ind: nat): Prop :=
+  match ind with
+  | O => PatternAcc P l 0%nat
+  | S ind' => Pattern (tl P) l ind'
+end. 
 
 Compute (Index [2;5;6;7;9;10] 3 100).
 Compute (Index1 [2;5;6;7;9;10] 3 100).
@@ -222,6 +273,12 @@ Fixpoint Pattern011 (In: list nat): Prop :=
               end
 end.
 
+Fixpoint All1(Input: list nat): Prop :=
+  match Input with
+  | nil => True
+  | h::t => (beq_nat h 1%nat) = true /\ (All1 t)
+end.
+
 Print Visibility.
 
 Lemma Reset_Output: Bin_List [0%nat].
@@ -304,9 +361,9 @@ Inductive series2values : nat -> Neuron -> Neuron -> list Q -> list Q -> Prop :=
 | (* This case processes the next input *)
   s2v_next : forall (t:nat) (N1 N2: Neuron) (P1 P2: list Q) 
                     (N1o N2o N1o' N2o':nat) (Input:Q) (N1w0 N1w1 N2w qN1o qN2o p1' p2':Q),    
-    (((S t) mod 3 = 1%nat /\ Input = 0) \/
-     ((S t) mod 3 = 2%nat /\ Input = 1) \/
-     ((S t) mod 3 = 0%nat /\ Input = 1)) ->
+    (((S t) mod 3 = 1%nat /\ Input == 0) \/
+     ((S t) mod 3 = 2%nat /\ Input == 1) \/
+     ((S t) mod 3 = 0%nat /\ Input == 1)) ->
     (* The following are "known" from the "recursive call" *)
     series2values t N1 N2 P1 P2 ->
     nth (Weights N1) 0%nat = (Some N1w0) -> 
@@ -324,6 +381,49 @@ Inductive series2values : nat -> Neuron -> Neuron -> list Q -> list Q -> Prop :=
     nth (Output N1) (S t) = (Some N1o'%nat) ->
     nth (Output N2) (S t) = (Some N2o'%nat) ->
     series2values (S t) N1 N2 (P1 ++ [p1']) (P2 ++ [p2']).
+
+Inductive series2neurons : nat -> Neuron -> Neuron -> Prop :=
+| (* This case is before any input is processed *)
+  s2v_base : forall (N1 N2: Neuron),
+    (length (Output N1) = 1%nat) ->
+    (length (Output N2) = 1%nat) ->
+    (hd 1%nat (Output N1)) = 0%nat ->
+    (hd 1%nat (Output N2)) = 0%nat ->
+    series2neurons 0 N1 N2
+| (* This case processes the next input *)
+  s2v_ind : forall (t:nat) (N1 N2: Neuron) (Input:nat),    
+    (((S t) mod 3 = 1%nat /\ Input = 0%nat) \/
+     ((S t) mod 3 = 2%nat /\ Input = 1%nat) \/
+     ((S t) mod 3 = 0%nat /\ Input = 1%nat)) ->
+    (* The following are "known" from the "recursive call" *)
+    series2neurons t N1 N2 ->
+    (length (Output N1) = (S t)) ->
+    (length (Output N2) = (S t)) ->
+    series2neurons (S t) (NextNeuron N1 [Input;(hd 0%nat (Output N2))]) (NextNeuron N2 [(hd 0%nat (Output N1))]).
+
+Fixpoint AfterNArch2N1 (N1 N2: Neuron) (Inputs: list nat): Neuron :=
+  match Inputs with
+  | nil => N1
+  | h::t => AfterNArch2N1 (NextNeuron N1 [h;(hd 2%nat (Output N2))]) (NextNeuron N2 [(hd 2%nat (Output N1))]) t
+end.
+
+Fixpoint AfterNArch2N2 (N1 N2: Neuron) (Inputs: list nat): Neuron :=
+  match Inputs with
+  | nil => N2
+  | h::t => AfterNArch2N2 (NextNeuron N1 [h;(hd 2%nat (Output N2))]) (NextNeuron N2 [(hd 0%nat (Output N1))]) t
+end.
+
+Fixpoint AfterNCIN1 (N1 N2: Neuron) (Inp1 Inp2: list nat): Neuron :=
+  match Inp1 with
+  | nil => N1
+  | h::t => AfterNCIN1 (NextNeuron N1 [h;(hd (2%nat) (Output N2))]) (NextNeuron N2 [(hd (0%nat) Inp2);(hd (2%nat) (Output N1))]) t (tl Inp2)
+end.
+
+Fixpoint AfterNCIN2 (N1 N2: Neuron) (Inp1 Inp2: list nat): Neuron :=
+  match Inp2 with
+  | nil => N2
+  | h::t => AfterNCIN2 (NextNeuron N1 [(hd (0%nat) Inp1);(hd (2%nat) (Output N2))]) (NextNeuron N2 [h;(hd (2%nat) (Output N1))]) (tl Inp1) t
+end.
 
 Definition Eq_Neuron (N: Neuron) (M: Neuron): bool :=
   (andb
@@ -521,7 +621,7 @@ Proof.
         { reflexivity. } auto.
 Qed.
 
-Lemma LengthZero: forall (l: list Q),
+Lemma LengthZero: forall {T: Type} (l: list T),
   (beq_nat (length l) 0%nat) = true -> l = nil.
 Proof.
   intros. destruct l as [|h t].
@@ -573,16 +673,16 @@ Proof.
       * apply H3.
 Qed.
 
-Lemma ListForm: forall (l: list Q),
-  (beq_nat (length l) 1%nat) = true -> exists hq:Q, l = hq::nil.
+Lemma ListForm: forall {T: Type} (l: list T),
+  (beq_nat (length l) 1%nat) = true -> exists hq:T, l = hq::nil.
 Proof.
   intros. destruct l as [|h t].
   - simpl in H. inversion H.
   - simpl in H. apply LengthZero in H. rewrite H. exists h. reflexivity.
 Qed.
 
-Lemma ListForm2: forall (l:list Q),
-  (beq_nat (length l) 2%nat) = true -> exists hq1 hq2:Q, l = hq1::hq2::nil.
+Lemma ListForm2: forall {T: Type} (l:list T),
+  (beq_nat (length l) 2%nat) = true -> exists hq1 hq2:T, l = hq1::hq2::nil.
 Proof.
   intros. destruct l as [|h t].
   - simpl in H. inversion H.
@@ -1283,6 +1383,41 @@ Proof.
             { inversion H1'. rewrite H7 in H0. apply IH in H0. apply H0. } auto. }
 Qed.
 
+Record NeuronSeries {Input: list nat} := MakeNeuronSeries 
+{
+  NeuronList: list Neuron;
+  NSOutput: list nat;
+  SeriesOutput: NSOutput = (SeriesNetworkOutput Input NeuronList);
+}.
+
+Compute (MakeNeuronSeries [1%nat;0%nat] ([]) ([1%nat;0%nat]) ). 
+
+Theorem SeriesN': forall (SeriesList: list Neuron) (Input: list nat) (NSeries: @NeuronSeries Input),
+    SeriesList = (NeuronList NSeries) -> 
+    AllDelayers (NeuronList NSeries) ->
+    Bin_List Input ->
+    (NSOutput NSeries) = Input ++ (NZeros (length (NeuronList NSeries))).
+Proof.
+  induction SeriesList as [| h t].
+  - intros. rewrite SeriesOutput. rewrite <- H. simpl. rewrite app_nil_r. reflexivity.
+  - intros. rewrite <- H in H0. simpl in H0. inversion H0 as [H2 [H3 H4]]. rewrite SeriesOutput. 
+    rewrite <- H. 
+    generalize (IHt Input (MakeNeuronSeries Input (t (SeriesNetworkOutput Input t)))); intro IHNew. simpl. apply IHt in H3.
+    simpl. rewrite H3. generalize (StillBin Input (length t)); intro HSB.
+    apply HSB in H0.
+    remember (AfterNsteps (ResetNeuron h) (Input ++ NZeros (length t))) as M.
+    generalize (Delayer_Property (Input ++ NZeros (length t)) h M); intro HDP.
+    assert (Htemp: (length (Weights h) =? 1) = true /\
+                   Eq_Neuron2 M (AfterNsteps (ResetNeuron h) (Input ++ NZeros (length t))) /\
+                   Bin_List (Input ++ NZeros (length t)) /\
+                   Qle_bool (Tau h) (hd 0 (Weights h)) = true).
+   { split; auto. split; auto. rewrite HeqM. unfold Eq_Neuron2.
+     split; auto. split; auto. split; auto. reflexivity.
+     split; auto. reflexivity. split; auto. }
+    apply HDP in Htemp. apply Delayer_lists in Htemp. rewrite Htemp.
+    rewrite <- app_assoc. rewrite AppendZero. reflexivity.
+Qed.*)
+
 Theorem SeriesN: forall (NeuronList: list Neuron) (Input: list nat),
   AllDelayers NeuronList -> Bin_List Input ->
    (SeriesNetworkOutput Input NeuronList) = Input ++ (NZeros (length NeuronList)).
@@ -1306,11 +1441,142 @@ Proof.
     rewrite <- app_assoc. rewrite AppendZero. reflexivity.
 Qed.
 
-Lemma InputOne: forall (t: nat) (P1 P2: list Q) (N1 N2: Neuron), 
+Check count_occ.
+
+Fixpoint count (l : list nat) (x : nat) : nat :=
+match l with
+  | [] => 0
+  | h :: t => if beq_nat h x then
+                 1 + count t x
+              else count t x 
+end.
+
+(*Theorem LessThanSuccessor: forall (a b: nat),
+  a <=? b = true -> a <=? (S b) = true.
+Proof.
+  intros. destruct a as [ | a'].
+  - simpl. reflexivity.
+  -*) 
+Theorem NextOutput01: forall (N: Neuron) (Inputs: list nat),
+    (beq_nat (NextOutput N Inputs) 0%nat) = true \/ (beq_nat (NextOutput N Inputs) 1%nat) = true.
+Proof.
+  intros. unfold NextOutput.
+  destruct (Qle_bool (Tau N) (NextPotential N Inputs)).
+  - right. simpl. reflexivity.
+  - left. simpl. reflexivity.
+Qed.
+
+Lemma LessThanSucc: forall (n: nat),
+  n <? (S n) = true.
+Proof.
+  intros. induction n as [ | n'].
+  - simpl. reflexivity.
+  - simpl. auto.
+Qed.
+
+
+Lemma LeqSucc: forall (n: nat),
+  n <=? (S n) = true.
+Proof.
+  intros. induction n as [ | n'].
+  - simpl. reflexivity.
+  - simpl. auto.
+Qed.
+
+(*Lemma LtSucc: forall (a b: nat),
+  a <=? b = true -> a <=? (S b) = true.
+Proof.
+  induction a as [ | a'].
+  - intros. simpl. reflexivity.
+  - intros. destruct b as [ | b'].
+    + inversion H.
+    + generalize (IHa' (S b')); intro HIS.*)
+
+Lemma LeqAssociativity: forall (a b c: nat),
+  a <=? b = true -> b <=? c = true -> a <=? c = true.
+Proof.
+  induction a as [ | a'].  
+  - intros. simpl. reflexivity.
+  - intros. destruct b as [ | b'].
+    + simpl in H. inversion H.
+    + destruct c as [ | c'].
+      * simpl in H0. inversion H0.
+      * generalize (IHa' b' c'); intro HISS. simpl in H. simpl in H0. 
+        apply HISS in H. simpl. auto. auto.
+Qed.
+
+Lemma ZeroInputZeroOutput: forall (N: Neuron) (Inputs: list nat),
+  (beq_nat (length (Weights N)) 1%nat) = true -> 
+  (beq_nat (length Inputs) 1%nat) = true -> 
+  (beq_nat (hd 0%nat Inputs) 0%nat) = true ->        (beq_nat (NextOutput N Inputs) 0%nat) = true.
+Proof.
+  intros. apply ListForm in H0. destruct H0. destruct Inputs as [ | h t] eqn: HIN. 
+  - simpl. inversion H0.
+  - inversion H0. simpl in H1. rewrite beq_nat_true_iff in H1. rewrite H1 in H3.
+    rewrite <- H3. apply ListForm in H. destruct H. unfold NextOutput.
+    unfold NextPotential. rewrite H. simpl.
+    destruct (Qle_bool (Tau N) (Current N)) eqn: HQTC.
+    + generalize (PosTau N); intro HPN. apply Qlt_bool_iff in HPN.
+      apply Qlt_not_le in HPN. apply Qle_bool_not_iff in HPN. rewrite HPN.
+      simpl. reflexivity.
+    + rewrite Qplus_0_l. apply Eq_reverse in HQTC. generalize (PosTau N); intro HPN.
+      generalize (LeakRange N); intro HLN. 
+      generalize (LessThanOneFactor (Current N) (Leak_Factor N) (Tau N)); intro HLCLT.
+      assert (Htemp: 
+        Qlt_bool 0 (Tau N) = true /\
+        Qlt_bool (Current N) (Tau N) = true /\
+        Qle_bool 0 (Leak_Factor N) = true /\ Qle_bool (Leak_Factor N) 1 = true).
+        { split. apply HPN. split. apply HQTC. apply HLN. }
+     apply HLCLT in Htemp. apply Qlt_bool_iff in Htemp. apply Qlt_not_le in Htemp.
+     apply Qle_bool_not_iff in Htemp. rewrite Htemp. simpl. reflexivity.
+Qed.
+
+Theorem SpikeDecreasing: forall (Inputs: list nat) (N: Neuron) (M: Neuron),
+  (beq_nat (length (Weights N)) 1%nat) = true /\
+  Eq_Neuron2 M (AfterNsteps (ResetNeuron N) Inputs) /\
+  Bin_List Inputs                        -> (count (Output M) 1%nat) <=? (count Inputs 1%nat) = true.
+Proof.
+  induction Inputs as [| h l].
+  - intros. inversion H as [H1 [H2 H3]]. simpl in H2. unfold Eq_Neuron2 in H2. 
+    inversion H2 as [H4 [H5 [H6 [H7 H8]]]]. simpl in H4. rewrite H4. simpl. reflexivity.
+  - intros. inversion H as [H1 [H2 H3]]. simpl in H3.
+    inversion H3 as [H4 H5]. unfold Eq_Neuron2 in H2. inversion H2 as [H6 [H7 [H8 [H9 H10]]]].
+      simpl in H7. simpl in H8. simpl in H9. simpl in H10.
+      simpl in H6. remember (AfterNsteps (ResetNeuron N) l) as M2.
+      assert (Htemp: (length (Weights N) =? 1) = true /\
+                        Eq_Neuron2 M2 (AfterNsteps (ResetNeuron N) l) /\ Bin_List l).
+        { split. apply H. split. rewrite <- HeqM2. unfold Eq_Neuron2. simpl.
+          split. reflexivity. split. reflexivity. split. reflexivity.
+          split; reflexivity. apply H5. }
+      generalize (IHl N M2); intro Hl. apply Hl in Htemp.
+      destruct (h =? 0) eqn: HBN.
+    + rewrite beq_nat_true_iff in HBN. rewrite HBN. simpl.
+      assert (HLen: (length (Weights M2) =? 1) = true).
+      { generalize (Unchanged (ResetNeuron N) l); intro HRM.
+        inversion HRM as [HRM1 [HRM2 HRM3]]. generalize (ResetUnchanged N); intro HR.
+        inversion HR as [HR1 [HR2 HR3]]. rewrite <- HR3 in HRM3. rewrite <- HeqM2 in HRM3.
+        rewrite HRM3 in H1. auto. }
+        generalize (ZeroInputZeroOutput M2 [0%nat]); intro HZM.
+        apply HZM in HLen. rewrite HBN in H6. rewrite beq_nat_true_iff in HLen.
+        rewrite HLen in H6. rewrite H6. simpl. auto. auto. auto.
+    + simpl in H4. rewrite beq_nat_true_iff in H4. rewrite H4.
+      generalize (NextOutput01 M2 [h]); intro HNAR. inversion HNAR as [HN1 | HN2].
+      * rewrite beq_nat_true_iff in HN1. rewrite HN1 in H6. rewrite H6. simpl. 
+        rewrite <- HN1 in H6. generalize (LeqSucc (count l 1)); intro HLC.
+        generalize (LeqAssociativity (count (Output M2) 1) (count l 1) (S (count l 1))); intro HLA.
+        apply HLA in Htemp. auto. auto.
+      * rewrite beq_nat_true_iff in HN2. rewrite HN2 in H6. rewrite H6. simpl. auto.
+Qed.
+   
+(*Lemma InputOne: forall (t:nat) (N1 N2: Neuron) (P1 P2: list Q) 
+                    (N1o N2o N1o' N2o':nat) (Input:Q) (N1w0 N1w1 N2w qN1o qN2o p1' p2':Q),
+  s2v_next t N1 N2 P1 P2 N1o N2o N1o' N2o' Input N1w0 N1w1 N2w qN1o qN2o p1' p2' -> Input == 1 -> nth (Output N1) (S t) = 1%nat.*)
+
+(*Lemma InputOne: forall (t: nat) (P1 P2: list Q) (N1 N2: Neuron), 
   (series2values t N1 N2 P1 P2) -> ((S t) mod 3) = 2%nat \/ ((S t) mod 3) = 0%nat ->
   nth (Output N1) (S t) = Some (1%nat).
 Proof.
-  intros. Admitted.
+  intros.*)
 
 (*Theorem Steady_Output: forall (P1 P2: list Q) (N1 N2: Neuron),
   (beq_nat (length (Weights N1)) 2%nat) = true ->
@@ -1327,29 +1593,146 @@ Proof.
     (lt_wf_ind t
       (fun t:nat =>
          1%nat <? t = true -> 
-         (series2values t N1 N2 P1 P2) -> (nth (Output N1) t) = (Some 1%nat))).*)
-     
-Theorem Steady_Output: forall (P1 P2: list Q) (N1 N2: Neuron),
+         (series2values t N1 N2 P1 P2) -> (nth (Output N1) t) = (Some 1%nat))).
+  intro H'.
+  apply H'; clear H' t; auto.
+  intros t Hind H6 H7.
+  inversion H7; subst. 
+  - inversion H6.
+  - destruct t0 as [|t1].
+    + inversion H6.
+    + destruct t1 as [| t2].
+      * inversion H0.
+        { inversion H17 as [H21 H22]. inversion H21. }
+        { inversion H17 as [H21 | H22].
+          { inversion H21 as [H22 H23]. rewrite H23 in H15.
+            generalize (LengthCover (Output N2) 1%nat); intro LCO.
+            assert (Htemp: exists k : nat, nth (Output N2) 1 = Some k).
+            { exists N2o. apply H12. }
+            apply LCO in Htemp.
+            generalize (Output_Bin N2); intro BLN2.
+            generalize (BinOutput (Output N2) 1); intro BON2.
+            specialize BON2 with (1:=BLN2) (2:=Htemp).
+            apply ListForm2 in H.
+            destruct H as [hq1 [hq2 H]].
+            generalize (FirstElement (Weights N1)); intro HFE.
+            generalize (SecondElement (Weights N1)); intro HSE.
+            assert (HT1: (1%nat <=? length (Weights N1)) = true).
+            { rewrite H. simpl. reflexivity. }
+            apply HFE in HT1. rewrite H8 in HT1. inversion HT1.
+            assert (HT2: (2%nat <=? length (Weights N1)) = true).
+            { rewrite H. simpl. reflexivity. }
+            apply HSE in HT2. rewrite H9 in HT2. inversion HT2.
+            rewrite <- H25 in H3. inversion BON2 as [B1 | B2].
+            { rewrite B1 in H12. inversion H12. rewrite <- H26 in H14.
+                inversion H14. rewrite <- H27 in H15.
+                rewrite Qmult_0_l in H15. rewrite Qmult_1_l in H15.
+                rewrite Qplus_0_l in H15. rewrite H15 in H19. 
+                apply Qle_bool_iff in H2. apply Qle_not_lt in H2.
+                apply Qlt_bool_not_iff in H2. rewrite <- H24 in H2.
+                rewrite H2 in H19. auto. }
+              { rewrite B2 in H12. inversion H12. rewrite <- H26 in H14.
+                inversion H14. rewrite <- H27 in H15. rewrite Qmult_1_l in H15.
+                rewrite Qmult_1_l in H15. rewrite H15 in H19.
+                rewrite <- H24 in H2. generalize (PosTau N1); intro HPT1.
+                assert (HAP: Qlt_bool (N1w1 + N1w0) (Tau N1) = false).
+                { apply Qlt_bool_iff in HPT1. apply Qlt_le_weak in HPT1.
+                  apply Qle_bool_iff in H2. specialize Qle_trans with (1:= HPT1) (2:= H2); intro HQT.
+                  apply Qle_bool_iff in HQT.
+                  assert (HX: Qle_bool (Tau N1) N1w1 = true /\ Qle_bool 0 N1w0 = true). { auto. } 
+                  apply AddPos in HX. apply Qle_bool_iff in HX.
+                  apply Qle_not_lt in HX. apply Qlt_bool_not_iff in HX. auto. }
+                  rewrite HAP in H19. auto. } }
+          { inversion H22 as [H23 H24]. inversion H23. } }
+      * inversion H0.
+        { inversion H17 as [H21 H22]. rewrite H22 in H15.
+          rewrite Qmult_0_l in H15. rewrite Qplus_0_r in H15.
+          generalize (BinOutputGeneral (Output N2) (S (S t2))); intro HBO.
+          generalize (Output_Bin N2); intro HB. apply HBO in HB.
+          inversion HB as [HB1 | [HB2 | HB3]].
+          { rewrite HB1 in H12. inversion H11.*)
+(*AfterNsteps and potential function*)
+(* Doing the index function backward *)
+
+Record NegativeLoop {Inputs: list nat} := MakeNegativeLoop {
+  N1: Neuron;
+  N2: Neuron;
+  NinputN1: (beq_nat (length (Weights N1)) 2) = true;
+  NinputN2: (beq_nat (length (Weights N2)) 1%nat) = true;
+  PW1: 0 < (hd 0 (Weights N1));
+  PW2: (hd 0 (tl (Weights N1))) < 0;
+  PW3: 0 < (hd 0 (Weights N2));
+  Connection1: Eq_Neuron2 N1 (AfterNArch2N1 (ResetNeuron N1) (ResetNeuron N2) Inputs);
+  Connection2: Eq_Neuron2 N2 (AfterNArch2N2 (ResetNeuron N1) (ResetNeuron N2) Inputs)
+}.
+
+Theorem NegativeLoopOutputPattern1100:
+  forall (Inputs: list nat) (w1 w2 w3: Q) (NLP: @NegativeLoop Inputs),
+  (w1 == (hd 0 (Weights (N1 NLP)))) ->
+  (w2 == (hd 0 (tl (Weights (N1 NLP))))) ->
+  (w3 == (hd 0 (Weights (N2 NLP)))) ->
+  (Qle_bool (Tau (N1 NLP)) (Qabs(w2) - w1)) = true ->
+  (Qle_bool (Tau (N1 NLP)) w1) = true ->
+  (Qle_bool (Tau (N2 NLP)) w3)  = true ->
+  All1 Inputs -> Pattern (Output (N1 NLP)) [1%nat;1%nat;0%nat;0%nat] 1%nat.
+Proof.
+
+Theorem ContralateralInhibition: forall (N1 N2 M1 M2: Neuron) (Inp1 Inp2: list nat) (w1 w2 w3 w4: Q),
   (beq_nat (length (Weights N1)) 2%nat) = true ->
+  (beq_nat (length (Weights N2)) 2%nat) = true ->
+   w1 == (hd 0 (Weights N1)) ->
+   w2 == (hd 0 (tl (Weights N1))) ->
+   w3 == (hd 0 (Weights N2)) ->
+   w4 == (hd 0 (tl (Weights N2))) ->
+  (Qlt_bool w2 0) = true ->
+  (Qlt_bool w4 0) = true ->
+  (Qle_bool (Tau N1) (Qabs(w2) - w1)) = true ->
+  (Qle_bool (Tau N2) (w3 - Qabs(w4))) = true ->
+  (All1 Inp1) ->
+  (All1 Inp2) ->
+  Eq_Neuron2 M1 (AfterNCIN1 (ResetNeuron N1) (ResetNeuron N2) Inp1 Inp2) ->
+  Eq_Neuron2 M2 (AfterNCIN2 (ResetNeuron N1) (ResetNeuron N2) Inp1 Inp2) -> (All1 (tl (Output M2))).
+
+  
+Theorem TwoPositive_Loop: forall (Inputs: list nat) (t: nat) (N1 N2 M1 M2: Neuron),
+  (beq_nat (length (Weights N1)) 2) = true ->
   (beq_nat (length (Weights N2)) 1%nat) = true ->
   (Qle_bool (Tau N1) (hd 0 (Weights N1)))  = true ->
   (Qle_bool (Tau N1) (hd 0 (tl (Weights N1))))  = true ->
   (Qle_bool (Tau N2) (hd 0 (Weights N2)))  = true ->
-  (*AfterNsteps and potential function*)
-  forall (t: nat), 1%nat <? t = true -> 
-  (series2values t N1 N2 P1 P2) -> (nth (Output N1) t) = (Some 1%nat).
+  Pattern011 Inputs ->
+  Eq_Neuron2 M1 (AfterNArch2N1 (ResetNeuron N1) (ResetNeuron N2) Inputs) ->
+  Eq_Neuron2 M2 (AfterNArch2N2 (ResetNeuron N1) (ResetNeuron N2) Inputs) ->
+  (lt 1%nat t) -> Index (rev (Output M1)) t 1%nat = 1%nat.
 Proof.
-  intros.
-  induction H5. 
-  - inversion H4.
-  - specialize IHseries2values with (1:=H) (2:=H0) (3:=H1) (4:=H2) (5:=H3).
+  destruct Inputs as [ | h1 Inp1].
+  - intros. simpl in H4. simpl in H5. unfold Eq_Neuron2 in H5. simpl in H5. 
+    inversion H5 as [H8 H9]. rewrite H8. destruct t as [ | t'].
+    + inversion H7.
+    + destruct t' as [ | tr]. 
+      * simpl. reflexivity.
+      * simpl. reflexivity. 
+  - intros. destruct Inp1 as [ | h2 Inp2]. 
+    + destruct t as [ | tr]. 
+      * inversion H7. 
+      * simpl in H5. unfold  simpl. inversion H4. (*destruct t as [| t'].
+    + inversion H6.
+    + destruct t' as [| t1]. 
+      * inversion H6. inversion H8.
+      * simpl in H4. unfold Eq_Neuron2 in H4. inversion H4 as [H1' [H2' [H3' [H4' H5']]]].
+        simpl in H1'. rewrite H1'. simpl. rewrite H1' in H4. simpl in H4.*)
+  - destruct Inp1 as [| h2 Inp2].
+    + simpl in H4. inversion H4. inversion H9.
+    + induction Inp2 as [| h3 Inp3].
+      * 
+specialize IHseries2neurons with (1:=H) (2:=H0) (3:=H1) (4:=H2) (5:=H3).
     destruct t as [|t'].
     + inversion H4.
     + induction t' as [|t1].
       * inversion H5.
-        { inversion H20 as [H21 H22]. inversion H21. }
-        { inversion H20.
-          { inversion H21 as [H22 H23]. rewrite H23 in H14.
+        { inversion H9 as [H10 H11]. inversion H10. }
+        { inversion H9.
+          { inversion H10 as [H11 H12]. rewrite H12. unfold NextNeuron. simpl. rewrite H23 in H14.
             generalize (LengthCover (Output N2) 1%nat); intro LCO.
             assert (Htemp: exists k : nat, nth (Output N2) 1 = Some k).
             { exists N2o. apply H11. }
