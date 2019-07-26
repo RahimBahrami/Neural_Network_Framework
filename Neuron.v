@@ -1401,10 +1401,13 @@ Proof.
   induction SeriesList as [| h t].
   - intros. rewrite SeriesOutput. rewrite <- H. simpl. rewrite app_nil_r. reflexivity.
   - intros. rewrite <- H in H0. simpl in H0. inversion H0 as [H2 [H3 H4]]. rewrite SeriesOutput. 
-    rewrite <- H. 
-    generalize (IHt Input (MakeNeuronSeries Input (t (SeriesNetworkOutput Input t)))); intro IHNew. simpl. apply IHt in H3.
-    simpl. rewrite H3. generalize (StillBin Input (length t)); intro HSB.
-    apply HSB in H0.
+    rewrite <- H.
+    remember (SeriesNetworkOutput Input t) as SNO. 
+    generalize (IHt Input (MakeNeuronSeries Input (t) (SNO) (HeqSNO))); intro IHNew. simpl in IHNew. 
+    assert (HW: t = t). { reflexivity. } apply IHNew in HW.
+    simpl. rewrite HeqSNO in HW. rewrite HW.
+    generalize (StillBin Input (length t)); intro HSB.
+    apply HSB in H1.
     remember (AfterNsteps (ResetNeuron h) (Input ++ NZeros (length t))) as M.
     generalize (Delayer_Property (Input ++ NZeros (length t)) h M); intro HDP.
     assert (Htemp: (length (Weights h) =? 1) = true /\
@@ -1416,14 +1419,15 @@ Proof.
      split; auto. reflexivity. split; auto. }
     apply HDP in Htemp. apply Delayer_lists in Htemp. rewrite Htemp.
     rewrite <- app_assoc. rewrite AppendZero. reflexivity.
-Qed.*)
+    auto. auto.
+Qed.
 
-Theorem SeriesN: forall (NeuronList: list Neuron) (Input: list nat),
-  AllDelayers NeuronList -> Bin_List Input ->
-   (SeriesNetworkOutput Input NeuronList) = Input ++ (NZeros (length NeuronList)).
+Theorem SeriesN: forall (NList: list Neuron) (Input: list nat),
+  AllDelayers NList -> Bin_List Input ->
+   (SeriesNetworkOutput Input NList) = Input ++ (NZeros (length NList)).
 Proof.
   intros.
-  induction NeuronList as [| h t].
+  induction NList as [| h t].
   - simpl. rewrite app_nil_r. reflexivity.
   - simpl in H. inversion H as [H1 [H2 H3]]. apply IHt in H3.
     simpl. rewrite H3. generalize (StillBin Input (length t)); intro HSB.
