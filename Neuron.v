@@ -1387,23 +1387,82 @@ Record NeuronSeries {Input: list nat} := MakeNeuronSeries
 {
   NeuronList: list Neuron;
   NSOutput: list nat;
+  AllSingle: forall (N:Neuron), In N NeuronList -> (beq_nat (length (Weights N)) 1%nat) = true;
   SeriesOutput: NSOutput = (SeriesNetworkOutput Input NeuronList);
 }.
 
 Compute (MakeNeuronSeries [1%nat;0%nat] ([]) ([1%nat;0%nat]) ). 
 
-Theorem SeriesN': forall (SeriesList: list Neuron) (Input: list nat) (NSeries: @NeuronSeries Input),
-    SeriesList = (NeuronList NSeries) -> 
+(*Theorem SeriesN': forall (Input: list nat) (NSeries: @NeuronSeries Input),
     AllDelayers (NeuronList NSeries) ->
     Bin_List Input ->
     (NSOutput NSeries) = Input ++ (NZeros (length (NeuronList NSeries))).
 Proof.
-  induction SeriesList as [| h t].
+  intros Input NSeries.
+  destruct NSeries.
+  simpl.
+  generalize dependent NeuronList0.
+  intro SeriesList.*)
+
+Lemma AllSingleInput: forall (NL: list Neuron),
+  AllDelayers NL -> forall (N: Neuron), In N NL -> (beq_nat (length (Weights N)) 1%nat) = true /\ Qle_bool (Tau N) (hd 0 (Weights N)) = true.
+Proof.
+  intros.
+  induction NL as [| h t].
+  - simpl in H0. inversion H0.
+  - simpl in H. inversion H as [H1 [H2 H3]]. simpl in H0.
+    destruct H0 as [H4 | H5].
+    + rewrite H4 in H1. rewrite H4 in H2. split; auto.
+    + apply IHt in H3. auto. auto.
+Qed.
+
+Theorem SeriesN': forall (*(SeriesList: list Neuron)*) (Input: list nat) (NSeries: @NeuronSeries Input),
+    (*SeriesList = (NeuronList NSeries) ->*) 
+    AllDelayers (NeuronList NSeries) ->
+    Bin_List Input ->
+    (NSOutput NSeries) = Input ++ (NZeros (length (NeuronList NSeries))).
+Proof.
+  intros Input NSeries.
+  destruct NSeries.
+  simpl. generalize dependent NSOutput0.
+  induction NeuronList0 as [| h t].
+  - simpl. rewrite app_nil_r. auto.
+  - simpl; intros. inversion H as [H1 [H2 H3]]. clear H.
+    assert (H: SeriesNetworkOutput Input t = SeriesNetworkOutput Input t).
+    { auto. } 
+    assert (HAS: forall N: Neuron, In N t -> (beq_nat (length (Weights N)) 1%nat) = true).
+    { generalize (AllSingleInput t H3); intro HAN. apply HAN. }
+    generalize (IHt HAS (SeriesNetworkOutput Input t) H H3 H0).
+    (*generalize (IHt (SeriesNetworkOutput Input t) H H3 H0).*)
+    intro H4. clear H.
+    rewrite SeriesOutput0. clear SeriesOutput0 NSOutput0.
+    rewrite -> H4. clear H4.
+    generalize (StillBin Input (length t)); intro HSB.
+    apply HSB in H0.
+    remember (AfterNsteps (ResetNeuron h) (Input ++ NZeros (length t))) as M.
+    generalize (Delayer_Property (Input ++ NZeros (length t)) h M); intro HDP.
+    assert (Htemp: (length (Weights h) =? 1) = true /\
+                   Eq_Neuron2 M (AfterNsteps (ResetNeuron h) (Input ++ NZeros (length t))) /\
+                   Bin_List (Input ++ NZeros (length t)) /\
+                   Qle_bool (Tau h) (hd 0 (Weights h)) = true).
+    { split; auto. split; auto. rewrite HeqM. unfold Eq_Neuron2.
+      split; auto. split; auto. split; auto. reflexivity.
+      split; auto. reflexivity. split; auto. }
+    apply HDP in Htemp. apply Delayer_lists in Htemp. rewrite Htemp.
+    rewrite <- app_assoc. rewrite AppendZero. reflexivity.
+Qed.
+  
+
+(*induction SeriesList as [| h t].
   - intros. rewrite SeriesOutput. rewrite <- H. simpl. rewrite app_nil_r. reflexivity.
   - intros. rewrite <- H in H0. simpl in H0. inversion H0 as [H2 [H3 H4]]. rewrite SeriesOutput. 
     rewrite <- H.
+    generalize (AllSingleInput t); intro HAN. apply HAN in H4.
+    { induction t as [ | h' t'].
+      + simpl. intros. inversion H5.
+      + simpl in H4.
     remember (SeriesNetworkOutput Input t) as SNO. 
-    generalize (IHt Input (MakeNeuronSeries Input (t) (SNO) (HeqSNO))); intro IHNew. simpl in IHNew. 
+    generalize (IHt Input (MakeNeuronSeries Input (t) (SNO) (HAN) (HeqSNO))); intro IHNew. simpl in IHNew. 
     assert (HW: t = t). { reflexivity. } apply IHNew in HW.
     simpl. rewrite HeqSNO in HW. rewrite HW.
     generalize (StillBin Input (length t)); intro HSB.
@@ -1420,7 +1479,7 @@ Proof.
     apply HDP in Htemp. apply Delayer_lists in Htemp. rewrite Htemp.
     rewrite <- app_assoc. rewrite AppendZero. reflexivity.
     auto. auto.
-Qed.
+Qed.*)
 
 Theorem SeriesN: forall (NList: list Neuron) (Input: list nat),
   AllDelayers NList -> Bin_List Input ->
@@ -1658,10 +1717,19 @@ Proof.
 (*AfterNsteps and potential function*)
 (* Doing the index function backward *)
 
+Lemma All1Eq: forall (l1 l2: list nat),
+  All1 l1 -> All1 l2 -> (length l1) = (length l2) -> l1 = l2.
+Proof.
+  induction l1 as [ | h1 t1 IHt1].
+  - intros l2 H1 H2 H3. simpl in H3. symmetry in H3. apply length_zero_iff_nil in H3. auto.
+  - induction l2 as [ | h2 t2 IHt2].
+    + intros H1 H2 H3. inversion H3.
+    + Admitted.
+
 Record NegativeLoop {Inputs: list nat} := MakeNegativeLoop {
   N1: Neuron;
   N2: Neuron;
-  NinputN1: (beq_nat (length (Weights N1)) 2) = true;
+  NinputN1: (beq_nat (length (Weights N1)) 2%nat) = true;
   NinputN2: (beq_nat (length (Weights N2)) 1%nat) = true;
   PW1: 0 < (hd 0 (Weights N1));
   PW2: (hd 0 (tl (Weights N1))) < 0;
@@ -1671,15 +1739,59 @@ Record NegativeLoop {Inputs: list nat} := MakeNegativeLoop {
 }.
 
 Theorem NegativeLoopOutputPattern1100:
-  forall (Inputs: list nat) (w1 w2 w3: Q) (NLP: @NegativeLoop Inputs),
+  forall (Inputs: list nat) (NLP: @NegativeLoop Inputs) (w1 w2 w3: Q),
   (w1 == (hd 0 (Weights (N1 NLP)))) ->
   (w2 == (hd 0 (tl (Weights (N1 NLP))))) ->
   (w3 == (hd 0 (Weights (N2 NLP)))) ->
-  (Qle_bool (Tau (N1 NLP)) (Qabs(w2) - w1)) = true ->
+  (Qle_bool (Tau (N1 NLP)) (Qabs w2 - w1)) = true ->
   (Qle_bool (Tau (N1 NLP)) w1) = true ->
   (Qle_bool (Tau (N2 NLP)) w3)  = true ->
-  All1 Inputs -> Pattern (Output (N1 NLP)) [1%nat;1%nat;0%nat;0%nat] 1%nat.
+  All1 Inputs -> Pattern (rev (tl (Output (N1 NLP)))) [1%nat;1%nat;0%nat;0%nat] 1%nat.
 Proof.
+  intros Inputs NLP w1 w2 w3.
+  destruct NLP. simpl.
+  intros H1 H2 H3 H4 H5 H6 H7.
+  generalize dependent N4.
+  generalize dependent N3.
+  generalize dependent Inputs.
+  induction Inputs as [ | h t IHt].
+  - intros. simpl in Connection3.
+    unfold Eq_Neuron2 in Connection3. inversion Connection3 as [H8 [H9 [H10 [H11 H12]]]].
+    simpl in H8. rewrite H8. auto.
+  - intros. simpl in Connection3. simpl in H7. inversion H7 as [H8 H9].
+    apply IHt in H9.
+  intros. induction Inputs as [ | h t IHt].
+  - simpl. generalize (Connection1 NLP); intro HCN1.
+    simpl in HCN1. unfold Eq_Neuron2 in HCN1. inversion HCN1 as [H6 [H7 [H8 [H9 H10]]]].
+    simpl in H6. rewrite H6. simpl. auto.
+  - simpl in H5. generalize (IHt (@NegativeLoop t)); intro HIN.
+
+Record ContralateralInhibition {Input1 Input2: list nat} := MakeContralaterlInhibition {
+  N1: Neuron;
+  N2: Neuron;
+  NinputN1: (beq_nat (length (Weights N1)) 2%nat) = true;
+  NinputN2: (beq_nat (length (Weights N2)) 2%nat) = true;
+  InputLengthEq: (length Input1) = (length Input2);
+  PW1: 0 < (hd 0 (Weights N1));
+  PW2: (hd 0 (tl (Weights N1))) < 0;
+  PW3: 0 < (hd 0 (Weights N2));
+  PW4: (hd 0 (tl (Weights N2))) < 0;
+  Connection1: Eq_Neuron2 N1 (AfterNCIN1 (ResetNeuron N1) (ResetNeuron N2) Input1 Input2);
+  Connection2: Eq_Neuron2 N2 (AfterNCIN2 (ResetNeuron N1) (ResetNeuron N2) Input1 Input2)
+}.
+
+Theorem CLIN1All1: forall (Input1 Input2: list nat) (CLI: @ContralateralInhibition Input1 Input2) (w1 w2 w3 w4: Q),
+   w1 == (hd 0 (Weights (N1 CLI))) ->
+   w2 == (hd 0 (tl (Weights (N1 CLI)))) ->
+   w3 == (hd 0 (Weights (N2 CLI))) ->
+   w4 == (hd 0 (tl (Weights (N2 CLI)))) ->
+  (Tau (N1 CLI)) <= (Qabs(w2) - w1) ->
+  (Tau (N2 CLI)) <= (w3 - Qabs(w4)) ->
+   All1 Input1 ->
+   All1 Input2 -> (All1 (tl (Output (N2 CLI)))).
+Proof.
+  induction Input1 as [ | h t IHt]. Admitted.
+
 
 Theorem ContralateralInhibition: forall (N1 N2 M1 M2: Neuron) (Inp1 Inp2: list nat) (w1 w2 w3 w4: Q),
   (beq_nat (length (Weights N1)) 2%nat) = true ->
