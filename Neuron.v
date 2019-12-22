@@ -10,6 +10,7 @@ Require Import BinPos BinNat Nat.
 Require Import Logic.
 Require Import QArith QArith_base Qabs Qpower Qreduction Qring Qfield.
 Import ListNotations.
+Require Export Lists.List.
 
 Section NeuralNetwork.
 
@@ -731,6 +732,20 @@ Proof.
     + reflexivity.
     + reflexivity.
 Qed.
+
+(*Lemma SameAfterReset: forall (N M: Neuron),
+  Eq_Neuron2 N M <-> N = M.
+Proof.
+  split.
+  - intros. unfold Eq_Neuron2 in H. inversion H as [H1 [H2 [H3 [H4 H5]]]]. 
+    destruct N as [O1 W1 L1 T1 C1 OB1 LR1 PT1 WR1].
+    destruct M as [O2 W2 L2 T2 C2 OB2 LR2 PT2 WR2].
+    revert OB1 OB2.
+  - reflexivity.
+  - split.
+    + reflexivity.
+    + reflexivity.
+Qed.*)
 
 Lemma NextNeuronUnchanged: forall (N: Neuron) (Inputs: list nat),
   (Leak_Factor N) == Leak_Factor (NextNeuron N Inputs) /\ 
@@ -1801,14 +1816,33 @@ Lemma InOutLength:
   beq_nat (length Inputs + 1%nat) (length (Output (PL_N2 PLP))) = true.
 Proof.
   destruct PLP. simpl.
-  induction Inputs as [ | h t IHt]. 
   generalize dependent PL_N3.
-  generalize dependent PL_N4.  
+  generalize dependent PL_N4. 
+  induction Inputs as [ | h t IHt]. 
   - intros. simpl in PL_Connection3. simpl in PL_Connection4. unfold Eq_Neuron2 in PL_Connection3.
     unfold Eq_Neuron2 in PL_Connection4. inversion PL_Connection3 as [H1 H2]. 
     inversion PL_Connection4 as [H3 H4]. simpl in H1. simpl in H3. rewrite H1. rewrite H3. 
     simpl. auto.
-  - Admitted.
+  - intros. simpl in PL_Connection3. simpl in PL_Connection4.
+    remember (AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N5.
+    remember (AfterNTwoLoopN2 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N6.
+    generalize (IHt PL_N6); intro IHtNew. unfold Eq_Neuron2 in PL_Connection3. 
+    inversion PL_Connection3 as [H1 [H2 H3]].
+    inversion PL_Connection4 as [H4 [H5 H6]].
+    generalize (NextNeuronUnchanged PL_N5 [h; hd 0%nat (Output PL_N6)]); intro HNNU1.
+    generalize (NextNeuronUnchanged PL_N6 [hd 0%nat (Output PL_N5)]); intro HNNU2.
+    inversion HNNU1 as [H7 [H8 H9]]. inversion HNNU2 as [H10 [H11 H12]]. 
+    rewrite <- H12 in H5. rewrite H5 in PL_NinputN4. apply IHtNew with PL_N5 in PL_NinputN4.
+    inversion PL_NinputN4 as [H13 H14]. split. simpl in H1. rewrite H1. 
+    simpl. auto. simpl in H4. rewrite H4. simpl. auto.
+    rewrite H5 in PL_PW6. auto. rewrite <- H9 in H2. rewrite H2 in PL_NinputN3. auto.
+    rewrite H2 in PL_PW4. auto. rewrite H2 in PL_PW5. auto.
+    Admitted.
+    (*assert (SameAfterReset1: (ResetNeuron PL_N3) = (ResetNeuron PL_N5)).
+    { unfold ResetNeuron. f_equal. rewrite H2. in destruct PL_N3. simpl.
+    rewrite HeqPL_N5.
+    
+     Admitted.*)
 
 Lemma PositivePotential:
   forall (l: list nat) (w: list Q),
@@ -1993,26 +2027,72 @@ Qed.
 
 Lemma PatternKept: forall (l x p: list nat),
   Pattern (l ++ x) p 0%nat -> Pattern l p 0%nat.
-Proof.
+Proof. 
   induction x as [ | h t IH].
-  - intros. simpl in H. admit.
+  - intros. simpl. simpl in H. rewrite app_nil_r in H. auto.
   - intros. simpl. Admitted.
 
+(*Lemma  ReDefined:*)
+ 
+Search List.nth rev.
+
+Search List.nth hd.
+
+Search skipn.
+Lemma FeedNInputs:
+  forall (n: nat) (Inputs rh: list nat) (N1 N2: Neuron),
+  rh = skipn n Inputs ->
+  n <=? (length Inputs) = true ->  
+  Output (AfterNTwoLoopN1 (ResetNeuron N1) (ResetNeuron N2) rh) =
+  skipn n (Output (AfterNTwoLoopN1 (ResetNeuron N1) (ResetNeuron N2) Inputs)).
+Proof.
+  induction n as [ | n' IH].
+  - intros. simpl. simpl in H. rewrite H. reflexivity.
+  - intros Inputs rh N1 N2 H1 H2. destruct Inputs as [ | h t].
+    + simpl in H2. inversion H2. 
+    + simpl in H1. simpl in H2. generalize (IH t rh N1 N2); intro IHnew.
+      apply IHnew in H1. simpl. auto. auto.
+Qed.
+
+Lemma HeadAfterSkip:
+  forall (n d: nat) (l: list nat),
+  List.nth n l d = hd d (skipn n l).
+Proof.
+  induction n as [ | n' IH].
+  - intros d l. destruct l as [ | h t]. 
+    + simpl. reflexivity.
+    + simpl. reflexivity.
+  - intros d l. destruct l as [ | h t].
+    + simpl. reflexivity.
+    + simpl. generalize (IH d t); intro IHnew. auto.
+Qed.
+
 Lemma NextTimeTPL:
-  forall (time: nat) (Inputs: list nat) (PLP: @PositiveLoop Inputs),
+  forall (Inputs: list nat) (time: nat) (PLP: @PositiveLoop Inputs),
   Qle_bool (Tau (PL_N1 PLP)) (hd 0 (Weights (PL_N1 PLP)))  = true ->
   (Qle_bool (Tau (PL_N1 PLP)) (hd 0 (tl (Weights (PL_N1 PLP)))))  = true ->
   (Qle_bool (Tau (PL_N2 PLP)) (hd 0 (Weights (PL_N2 PLP))))  = true ->
-  Index (rev (Inputs)) time 0%nat = 1%nat ->
-  Index (rev (Output (PL_N1 PLP))) (time + 1) 0%nat = 1%nat.
+  List.nth time (rev (Inputs)) 0%nat = 1%nat \/
+  List.nth time (rev (Output PL_N2 PLP)->
+  List.nth (time + 1) (rev (Output (PL_N1 PLP))) 0%nat = 1%nat.
 Proof.
-  destruct PLP. simpl.
-  generalize dependent Inputs.
-  generalize dependent time.
-  induction time as [ | n IH].
-  - generalize dependent PL_N3.
-    generalize dependent PL_N4. induction Inputs as [ | h t]. (*using rev_ind.*)
-    
+  destruct PLP. simpl. intros H1 H2 H3 H4.
+  
+  (*generalize dependent PL_N4.
+  generalize dependent PL_N3.*)
+  destruct Inputs as [ | h t].
+  (*induction time as [ | n IH].*)
+  - intros. destruct time as [ | n].
+    + simpl in H2. inversion H2.
+    + simpl in H2. inversion H2.
+  - intros.
+    remember (AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N5.
+    remember (AfterNTwoLoopN2 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N6.
+    destruct time as [ | n].
+    + simpl. simpl in PL_Connection3. unfold Eq_Neuron2 in PL_Connection3.
+      inversion PL_Connection3 as [H3 [H4 [H5 [H6 H7]]]]. rewrite <- HeqPL_N5 in H3.
+      simpl in H3. unfold NextOutput in H3.
+      
      (*induction Inputs as [ | h t] using rev_ind.*)
     + intros H1 H2 H3 H4 H5 H6. simpl in H6. inversion H6.
     + intros H1 H2 H3 H4 H5 H6. simpl in H1. simpl in H6. simpl.
