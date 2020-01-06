@@ -733,6 +733,14 @@ Proof.
     + reflexivity.
 Qed.
 
+Lemma ReflexivityNeuron: forall (N: Neuron),
+  Eq_Neuron2 N N.
+Proof.
+  intros. unfold Eq_Neuron2.
+  split. reflexivity. split. reflexivity. split. reflexivity.
+  split; reflexivity.
+Qed.
+ 
 (*Lemma SameAfterReset: forall (N M: Neuron),
   Eq_Neuron2 N M <-> N = M.
 Proof.
@@ -1810,39 +1818,37 @@ Search le true.
 Search rev_ind.
 Search rev app.
 
+Lemma InOutLengthHelper:
+  forall (Inputs: list nat) (N M P Q: Neuron),
+  Eq_Neuron2 N (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) Inputs) ->
+  Eq_Neuron2 M (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) Inputs) ->
+  beq_nat (length Inputs + 1%nat) (length (Output N)) = true /\ 
+  beq_nat (length Inputs + 1%nat) (length (Output M)) = true.
+Proof.
+  induction Inputs as [ | h t IH].
+  - intros N M P Q H1 H2. simpl in H1. simpl in H2. inversion H1 as [H3 H4].
+    inversion H2 as [H5 H6]. simpl in H5. simpl in H3. rewrite H3. rewrite H5.
+    simpl. auto.
+  - intros N M P Q H1 H2. simpl in H1. simpl in H2.
+    remember (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) t) as X.
+    remember (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) t) as Y.
+    generalize (IH X Y P Q); intro IHnew. rewrite <- HeqX in IHnew.
+    rewrite <- HeqY in IHnew. generalize (ReflexivityNeuron X); intro HRNX.
+    apply IHnew in HRNX. unfold Eq_Neuron2 in H1. inversion H1 as [H3 H4].
+    unfold Eq_Neuron2 in H2. inversion H2 as [H5 H6]. simpl in H3. simpl in H5.
+    rewrite H3. rewrite H5. simpl. auto.
+    generalize (ReflexivityNeuron Y); intro HRNY. auto.
+Qed. 
+
 Lemma InOutLength:
   forall (Inputs: list nat) (PLP: @PositiveLoop Inputs),
   beq_nat (length Inputs + 1%nat) (length (Output (PL_N1 PLP))) = true /\ 
   beq_nat (length Inputs + 1%nat) (length (Output (PL_N2 PLP))) = true.
 Proof.
   destruct PLP. simpl.
-  generalize dependent PL_N3.
-  generalize dependent PL_N4. 
-  induction Inputs as [ | h t IHt]. 
-  - intros. simpl in PL_Connection3. simpl in PL_Connection4. unfold Eq_Neuron2 in PL_Connection3.
-    unfold Eq_Neuron2 in PL_Connection4. inversion PL_Connection3 as [H1 H2]. 
-    inversion PL_Connection4 as [H3 H4]. simpl in H1. simpl in H3. rewrite H1. rewrite H3. 
-    simpl. auto.
-  - intros. simpl in PL_Connection3. simpl in PL_Connection4.
-    remember (AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N5.
-    remember (AfterNTwoLoopN2 (ResetNeuron PL_N3) (ResetNeuron PL_N4) t) as PL_N6.
-    generalize (IHt PL_N6); intro IHtNew. unfold Eq_Neuron2 in PL_Connection3. 
-    inversion PL_Connection3 as [H1 [H2 H3]].
-    inversion PL_Connection4 as [H4 [H5 H6]].
-    generalize (NextNeuronUnchanged PL_N5 [h; hd 0%nat (Output PL_N6)]); intro HNNU1.
-    generalize (NextNeuronUnchanged PL_N6 [hd 0%nat (Output PL_N5)]); intro HNNU2.
-    inversion HNNU1 as [H7 [H8 H9]]. inversion HNNU2 as [H10 [H11 H12]]. 
-    rewrite <- H12 in H5. rewrite H5 in PL_NinputN4. apply IHtNew with PL_N5 in PL_NinputN4.
-    inversion PL_NinputN4 as [H13 H14]. split. simpl in H1. rewrite H1. 
-    simpl. auto. simpl in H4. rewrite H4. simpl. auto.
-    rewrite H5 in PL_PW6. auto. rewrite <- H9 in H2. rewrite H2 in PL_NinputN3. auto.
-    rewrite H2 in PL_PW4. auto. rewrite H2 in PL_PW5. auto.
-    Admitted.
-    (*assert (SameAfterReset1: (ResetNeuron PL_N3) = (ResetNeuron PL_N5)).
-    { unfold ResetNeuron. f_equal. rewrite H2. in destruct PL_N3. simpl.
-    rewrite HeqPL_N5.
-    
-     Admitted.*)
+  generalize (InOutLengthHelper Inputs PL_N3 PL_N4 (ResetNeuron PL_N3) (ResetNeuron PL_N4)); intro HIOL.
+  apply HIOL in PL_Connection3. auto. auto.
+Qed.
 
 Lemma PositivePotential:
   forall (l: list nat) (w: list Q),
@@ -1863,7 +1869,7 @@ Proof.
         apply HQLC in H1. auto. auto.
 Qed.
 
-Lemma PositiveCurrent:
+Lemma PositiveCurrent1:
   forall (Inputs: list nat) (N M P: Neuron),
   AllPositive (Weights N) ->
   N = AfterNTwoLoopN1 (ResetNeuron M) (ResetNeuron P) Inputs -> 0 <= (Current N).
@@ -1891,6 +1897,198 @@ Proof.
    + auto.
 Qed.
 
+Lemma PositiveCurrent2:
+  forall (Inputs: list nat) (N M P: Neuron),
+  AllPositive (Weights N) ->
+  N = AfterNTwoLoopN2 (ResetNeuron M) (ResetNeuron P) Inputs -> 0 <= (Current N).
+Proof.
+  induction Inputs as [ | h t IH].
+  - intros N M P H1 H2. simpl in H2. unfold ResetNeuron in H2. rewrite H2. simpl.
+    apply Qle_lteq. right. reflexivity.
+  - intros N M P H1 H2. simpl in H2.
+    remember (AfterNTwoLoopN1 (ResetNeuron M) (ResetNeuron P) t) as X.
+    remember (AfterNTwoLoopN2 (ResetNeuron M) (ResetNeuron P) t) as Y.
+    generalize (NextNeuronUnchanged Y [hd 0%nat (Output X)]); intro HNNX.
+    inversion HNNX as [H3 [H4 H5]]. generalize (IH Y M P); intro HIH.
+    unfold NextNeuron in H2. rewrite H2 in H1. simpl in H1.  
+    assert (H1Copy: AllPositive (Weights Y)). { auto. } apply HIH in H1.
+    + rewrite H2. simpl. unfold NextPotential.
+      generalize (PositivePotential [hd 0%nat (Output X)] (Weights Y)); intro HPP.
+      destruct (Qle_bool (Tau Y) (Current Y)) eqn: HQTC.
+      * auto.
+      * apply HPP in H1Copy. (generalize (LeakRange Y)); intro HLRY.
+        inversion HLRY as [H6 H7]. apply Qle_bool_iff in H6.
+        generalize (Qmult_le_0_compat (Leak_Factor Y) (Current Y)); intro HQM.
+        apply HQM in H6.
+        generalize (Qplus_le_compat 0 (potential (Weights Y) [hd 0%nat (Output X)]) 0 (Leak_Factor Y * Current Y)); intro HQP.
+        apply HQP in H1Copy. auto. auto. auto.
+   + auto.
+Qed.
+
+Lemma AfterN1Unchanged:
+  forall (Inputs: list nat) (N P Q: Neuron),
+  Eq_Neuron2 N (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) Inputs) ->
+  (Leak_Factor P == Leak_Factor N) /\ (Tau P == Tau N) /\ (Weights P = Weights N).
+Proof.
+  induction Inputs as [ | h t IH].
+  - intros N P Q H. simpl in H. generalize (ResetUnchanged P); intro HRU.
+    unfold Eq_Neuron2 in H. inversion H as [H1 [H2 [H3 [H4 H5]]]].
+    rewrite <- H2 in HRU. rewrite <- H3 in HRU. rewrite <- H4 in HRU. auto.
+  - intros N P Q H. simpl in H.
+    remember (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) t) as M.
+    assert (Htemp: Eq_Neuron2 M (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) t)).
+    { rewrite <- HeqM. unfold Eq_Neuron2. split. auto. split. auto. split. reflexivity.
+      split; reflexivity. } generalize (IH M P Q); intro IHnew.
+    generalize (NextNeuronUnchanged M [h; hd 0%nat (Output (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) t))]); intro HSR.
+    apply IHnew in Htemp. unfold Eq_Neuron2 in H. inversion H as [H1 [H2 [H3 [H4 H5]]]].
+    inversion HSR as [H6 [H7 H8]]. rewrite <- H2 in H8. rewrite <- H3 in H6.
+    rewrite <- H4 in H7. rewrite H6 in Htemp. rewrite H7 in Htemp.
+    rewrite H8 in Htemp. auto.
+Qed.
+    
+Lemma AfterN2Unchanged:
+  forall (Inputs: list nat) (N P Q: Neuron),
+  Eq_Neuron2 N (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) Inputs) ->
+  (Leak_Factor Q == Leak_Factor N) /\ (Tau Q == Tau N) /\ (Weights Q = Weights N).
+Proof.
+  induction Inputs as [ | h t IH].
+  - intros N P Q H. simpl in H. generalize (ResetUnchanged Q); intro HRU.
+    unfold Eq_Neuron2 in H. inversion H as [H1 [H2 [H3 [H4 H5]]]].
+    rewrite <- H2 in HRU. rewrite <- H3 in HRU. rewrite <- H4 in HRU. auto.
+  - intros N P Q H. simpl in H.
+    remember (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) t) as M.
+    assert (Htemp: Eq_Neuron2 M (AfterNTwoLoopN2 (ResetNeuron P) (ResetNeuron Q) t)).
+    { rewrite <- HeqM. unfold Eq_Neuron2. split. auto. split. auto. split. reflexivity.
+      split; reflexivity. } generalize (IH M P Q); intro IHnew.
+    generalize (NextNeuronUnchanged M [hd 0%nat (Output (AfterNTwoLoopN1 (ResetNeuron P) (ResetNeuron Q) t))]); intro HSR.
+    apply IHnew in Htemp. unfold Eq_Neuron2 in H. inversion H as [H1 [H2 [H3 [H4 H5]]]].
+    inversion HSR as [H6 [H7 H8]]. rewrite <- H2 in H8. rewrite <- H3 in H6.
+    rewrite <- H4 in H7. rewrite H6 in Htemp. rewrite H7 in Htemp.
+    rewrite H8 in Htemp. auto.
+Qed.
+
+Lemma NextOutputN1_TPL_Helper:
+  forall (Inputs: list nat) (P Q N M: Neuron),
+  Qle_bool (Tau N) (hd 0 (Weights N)) = true ->
+  Qle_bool (Tau N) (hd 0 (tl (Weights N)))  = true ->
+  Qle_bool (Tau M) (hd 0 (Weights M))  = true ->
+  (beq_nat (length (Weights N)) 2%nat) = true ->
+  (beq_nat (length (Weights M)) 1%nat) = true ->
+  0 < (hd 0 (Weights N)) ->
+  0 < (hd 0 (tl (Weights N))) ->
+  0 < (hd 0 (Weights M)) ->
+  (hd 0%nat Inputs) = 1%nat \/ (hd 0%nat (tl (Output Q)) = 1%nat) ->
+  Eq_Neuron2 P (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  Eq_Neuron2 Q (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+    hd 0%nat (Output P) = 1%nat.
+Proof.
+  intros Inputs P Q N M H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11.
+  remember (hd 0 (Weights N)) as w11.
+  remember (hd 0 (Weights M)) as w21.
+  remember (hd 0 (tl (Weights N))) as w12.
+  assert (HWS: (Weights N) = [w11;w12]).
+    { destruct (Weights N) as [ | h t].
+      - simpl in H4. inversion H4. 
+      - destruct t as [ | h' t']. 
+        + simpl in H4. inversion H4. 
+        + destruct t' as [ | h'' t'']. 
+          * simpl in Heqw11. simpl in Heqw12. rewrite Heqw11. rewrite Heqw12. reflexivity.
+          * simpl in H4. inversion H4. }
+  assert (CopyH10: Eq_Neuron2 P (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs)).
+  { auto. }
+  generalize (AfterN1Unchanged Inputs P N M); intro HAN1. apply HAN1 in CopyH10.
+  inversion CopyH10 as [HA1 [HA2 HA3]]. clear HAN1.
+  inversion H9 as [H12 | H13].
+  - destruct Inputs as [ | h t].
+    + inversion H12.
+    + simpl in H10. unfold Eq_Neuron2 in H10.
+      inversion H10 as [H14 [H15 H16]]. simpl in H12. rewrite H12 in H14.
+      unfold NextNeuron in H14. simpl in H14. unfold NextOutput in H14. 
+      unfold NextPotential in H14.
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) t) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) t) as Y.
+      generalize (NextNeuronUnchanged X [h; hd 0%nat (Output Y)]); intro HNNU.
+      inversion HNNU as [H17 [H18 H19]]. rewrite <- H19 in H15. rewrite <- HA3 in H15.
+      rewrite HWS in H15. rewrite <- H15 in H14.
+      destruct (Qle_bool (Tau X) (Current X)) eqn: HQTC.
+      * unfold potential in H14. simpl in H14. generalize (Output_Bin Y); intro HOBY.
+        generalize (ZeroOne (Output Y)); intro HZOY. apply HZOY in HOBY.
+        inversion H16 as [H20 [H21 H22]]. rewrite <- H21 in H18. rewrite H18 in H14.
+        inversion HOBY as [H23 | H24].
+        { rewrite H23 in H14. rewrite Qplus_0_l in H14. rewrite HA2 in H1.
+          rewrite H1 in H14. rewrite H14. auto. } 
+        { rewrite beq_nat_true_iff in H24. rewrite H24 in H14. simpl in H14. 
+          rewrite Qplus_0_l in H14. rewrite Qplus_comm in H14. apply Qle_bool_iff in H2. 
+          generalize (Qplus_lt_le_compat 0 w11 (Tau N) w12); intro HQPLL.
+          apply HQPLL in H6. rewrite Qplus_0_l in H6. apply Qlt_le_weak in H6.
+          apply Qle_bool_iff in H6. rewrite HA2 in H6. rewrite H6 in H14. rewrite H14.
+          auto. auto. }
+      * assert (PositiveWeightsN: AllPositive (Weights X)). 
+        { rewrite <- H15. simpl. auto. }
+        assert (HighPotential: (Tau X) <= (potential [w11; w12] [1%nat; hd 0%nat (Output Y)])).
+        { inversion H16 as [H20 [H21 H22]]. rewrite <- H18 in H21. rewrite <- H21.
+          generalize (Output_Bin Y); intro HOB. generalize (ZeroOne (Output Y)); intro HZO.
+          apply HZO in HOB. inversion HOB as [H23 | H24].
+          { apply beq_nat_true_iff in H23. rewrite H23. simpl. rewrite Qplus_0_l.
+            rewrite HA2 in H1. apply Qle_bool_iff in H1. auto. }
+          { apply beq_nat_true_iff in H24. rewrite H24. simpl. rewrite Qplus_0_l.
+            apply Qlt_le_weak in H7. apply Qle_bool_iff in H1.
+            generalize (Qplus_le_compat 0 w12 (Tau N) w11); intro HQC.
+            apply HQC in H7. rewrite Qplus_0_l in H7. rewrite <- HA2. auto. auto. } }
+        generalize (PositiveCurrent1 t X N M); intro HPC. apply HPC in PositiveWeightsN.
+        generalize (LeakRange X); intro HLN. inversion HLN as [H20 H21]. 
+        apply Qle_bool_iff in H20. 
+        generalize (Qmult_le_0_compat (Leak_Factor X) (Current X)); intro HQP.
+        apply HQP in H20. 
+        generalize (Qplus_le_compat (Tau X) (potential [w11; w12] [1%nat; hd 0%nat (Output Y)]) 0 (Leak_Factor X * Current X)); intro HQFinal.
+        apply HQFinal in HighPotential. rewrite Qplus_0_r in HighPotential.
+        apply Qle_bool_iff in HighPotential. rewrite HighPotential in H14.
+        rewrite H14. simpl. reflexivity. auto. auto. auto.
+  - unfold Eq_Neuron2 in H10.
+    inversion H10 as [H14 [H15 [H16 [H17 H18]]]].
+    destruct Inputs as [ | h t].
+    + unfold Eq_Neuron2 in H11. inversion H11 as [H19 H20].
+      simpl in H19. rewrite H19 in H13. simpl in H13. inversion H13.
+    + simpl in H11. unfold Eq_Neuron2 in H11. inversion H11 as [H19 H20].
+      unfold NextNeuron in H19. simpl in H19. simpl in H14. rewrite H19 in H13. simpl in H13.
+      rewrite H13 in H14. 
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) t) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) t) as Y.
+      unfold NextOutput in H14. unfold NextPotential in H14.
+      generalize (NextNeuronUnchanged X [h; hd 0%nat (Output Y)]); intro HNNU.
+      inversion HNNU as [H21 [H22 H23]]. simpl in H15. rewrite <- HeqX in H15.
+      rewrite <- HA3 in H15. rewrite HWS in H15. rewrite <- H15 in H14. simpl in H17.
+      rewrite <- HeqX in H17. destruct (Qle_bool (Tau X) (Current X)) eqn: HQTC.
+      * destruct (beq_nat h 0%nat) eqn: HBN.
+        { rewrite beq_nat_true_iff in HBN. rewrite HBN in H14.
+          simpl in H14. rewrite Qplus_0_l in H14. rewrite <- HA2 in H17. rewrite H17 in H2.
+          rewrite H2 in H14. rewrite H14. simpl. reflexivity. }
+        { simpl in H14. rewrite HBN in H14. rewrite Qplus_0_l in H14.
+          generalize (Qplus_le_compat 0 w12 (Tau X) w11); intro HQC.
+          apply Qle_bool_iff in H1. rewrite <- HA2 in H17. rewrite H17 in H1.
+          apply Qlt_le_weak in H7. apply HQC in H7. rewrite Qplus_0_l in H7.
+          apply Qle_bool_iff in H7. rewrite H7 in H14. rewrite H14. simpl. reflexivity. auto. }
+      * assert (PositiveWeightsX: AllPositive (Weights X)). 
+        { rewrite <- H15. simpl. auto. }
+        generalize (PositiveCurrent1 t X N M); intro HPC. apply HPC in PositiveWeightsX.
+        generalize (LeakRange X); intro HLX. inversion HLX as [H24 H25].
+        apply Qle_bool_iff in H24. generalize (Qmult_le_0_compat (Leak_Factor X) (Current X)); intro HQP.
+        apply HQP in H24. destruct (beq_nat h 0%nat) eqn: HBN.
+        { simpl in H14. rewrite HBN in H14. rewrite Qplus_0_l in H14.
+          generalize (Qplus_le_compat (Tau X) w12 0 (Leak_Factor X * Current X)); intro HQC.
+          rewrite <- HA2 in H17. rewrite H17 in H2. apply Qle_bool_iff in H2. apply HQC in H2.
+          rewrite Qplus_0_r in H2. apply Qle_bool_iff in H2. rewrite H2 in H14.
+          rewrite H14. simpl. reflexivity. auto. } 
+        { simpl in H14. rewrite HBN in H14. rewrite Qplus_0_l in H14.
+          generalize (Qplus_le_compat 0 w12 (Tau X) w11); intro HQC.
+          apply Qlt_le_weak in H7. apply HQC in H7. rewrite Qplus_0_l in H7.
+          generalize (Qplus_le_compat (Tau X) (w12 + w11) 0 (Leak_Factor X * Current X)); intro HQLC.
+          apply HQLC in H7. rewrite Qplus_0_r in H7. apply Qle_bool_iff in H7.
+          rewrite H7 in H14. rewrite H14. simpl. reflexivity. auto.
+          rewrite <- HA2 in H17. rewrite H17 in H1. apply Qle_bool_iff in H1. auto. }
+        auto. auto.
+Qed.
+
 Lemma NextOutputN1_TPL:
   forall (Inputs: list nat) (PLP: @PositiveLoop Inputs),
   Qle_bool (Tau (PL_N1 PLP)) (hd 0 (Weights (PL_N1 PLP)))  = true ->
@@ -1900,7 +2098,11 @@ Lemma NextOutputN1_TPL:
     hd 0%nat (Output (PL_N1 PLP)) = 1%nat.
 Proof.
   destruct PLP. simpl.
-  remember (hd 0 (Weights PL_N3)) as w11.
+  intros H1 H2 H3 H4.
+  generalize (NextOutputN1_TPL_Helper Inputs PL_N3 PL_N4 PL_N3 PL_N4); intro HNONTPLH.
+  apply HNONTPLH in H1; auto.
+Qed.
+(*  remember (hd 0 (Weights PL_N3)) as w11.
   remember (hd 0 (Weights PL_N4)) as w21.
   remember (hd 0 (tl (Weights PL_N3))) as w12.
   assert (HWS: (Weights PL_N3) = [w11;w12]).
@@ -1998,16 +2200,74 @@ Proof.
           rewrite PL_PW5 in H7. rewrite H7. simpl. reflexivity. auto.
           rewrite H10 in H1. apply Qle_bool_iff in H1. auto. }
         auto. auto.
-Qed. 
+Qed.*)
+
+Lemma NextOutputN2_TPL_Helper:
+  forall (Inputs: list nat) (P Q N M: Neuron),
+  Qle_bool (Tau N) (hd 0 (Weights N)) = true ->
+  Qle_bool (Tau N) (hd 0 (tl (Weights N)))  = true ->
+  Qle_bool (Tau M) (hd 0 (Weights M))  = true ->
+  (beq_nat (length (Weights N)) 2%nat) = true ->
+  (beq_nat (length (Weights M)) 1%nat) = true ->
+  0 < (hd 0 (Weights N)) ->
+  0 < (hd 0 (tl (Weights N))) ->
+  0 < (hd 0 (Weights M)) ->
+  (hd 0%nat (tl (Output P)) = 1%nat) ->
+  Eq_Neuron2 P (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  Eq_Neuron2 Q (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+    hd 0%nat (Output Q) = 1%nat.
+Proof.
+  intros Inputs P Q N M H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11.
+  remember (hd 0 (Weights M)) as w21.
+  assert (HWS: (Weights M) = [w21]).
+    { destruct (Weights M) as [ | h t]. 
+      - simpl in H5. inversion H5. 
+      - destruct t as [ | h' t']. 
+        + simpl in Heqw21. rewrite Heqw21. reflexivity.
+        + simpl in H5. inversion H5. }
+  assert (CopyH11: Eq_Neuron2 Q (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) Inputs)).
+  { auto. }
+  generalize (AfterN2Unchanged Inputs Q N M); intro HAN2.
+  apply HAN2 in CopyH11. inversion CopyH11 as [HN1 [HN2 HN3]]. clear HAN2.
+  unfold Eq_Neuron2 in H11.
+  inversion H11 as [H12 [H13 [H14 [H15 H16]]]].
+    destruct Inputs as [ | h t].
+    - unfold Eq_Neuron2 in H10. inversion H10 as [H17 H18].
+      simpl in H17. rewrite H17 in H9. simpl in H9. inversion H9.
+    - simpl in H10. unfold Eq_Neuron2 in H10. inversion H10 as [H17 H18].
+      unfold NextNeuron in H17. simpl in H17. simpl in H12. rewrite H17 in H9. simpl in H9.
+      rewrite H9 in H12.
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) t) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) t) as Y.
+      unfold NextOutput in H12. unfold NextPotential in H12.
+      simpl in H13. rewrite <- HeqY in H13. rewrite <- HN3 in H13. rewrite H13 in HWS.
+      rewrite HWS in H12. simpl in H15. rewrite <- HeqY in H15. rewrite <- HN2 in H15.
+      rewrite H15 in H3. destruct (Qle_bool (Tau Y) (Current Y)) eqn: HQTC.
+      + simpl in H12. rewrite Qplus_0_l in H12. rewrite H3 in H12. rewrite H12.
+        simpl. reflexivity.
+      + simpl in H12. rewrite Qplus_0_l in H12.
+        assert (PositiveWeightsY: AllPositive (Weights Y)). 
+        { rewrite HWS. simpl. auto. }
+        generalize (PositiveCurrent2 t Y N M); intro HPC. apply HPC in PositiveWeightsY.
+        generalize (LeakRange Y); intro HLY. inversion HLY as [H19 H20]. apply Qle_bool_iff in H19.
+        generalize (Qmult_le_0_compat (Leak_Factor Y) (Current Y)); intro HQP. apply HQP in H19.
+        generalize (Qplus_le_compat (Tau Y) w21 0 (Leak_Factor Y * Current Y)); intro HQC.
+        apply Qle_bool_iff in H3. apply HQC in H3. rewrite Qplus_0_r in H3. apply Qle_bool_iff in H3.
+        rewrite H3 in H12. rewrite H12. simpl. reflexivity. auto. auto. auto.
+Qed.
 
 Lemma NextOutputN2_TPL:
   forall (Inputs: list nat) (PLP: @PositiveLoop Inputs),
   Qle_bool (Tau (PL_N1 PLP)) (hd 0 (Weights (PL_N1 PLP)))  = true ->
   (Qle_bool (Tau (PL_N1 PLP)) (hd 0 (tl (Weights (PL_N1 PLP)))))  = true ->
   (Qle_bool (Tau (PL_N2 PLP)) (hd 0 (Weights (PL_N2 PLP))))  = true ->
-  (hd 0%nat (Output (PL_N1 PLP)) = 1%nat) -> hd 2%nat (Output (PL_N2 PLP)) = 1%nat.
+  (hd 0%nat (tl (Output (PL_N1 PLP))) = 1%nat) -> hd 0%nat (Output (PL_N2 PLP)) = 1%nat.
 Proof.
-  Admitted.
+  destruct PLP. simpl.
+  intros H1 H2 H3 H4.
+  generalize (NextOutputN2_TPL_Helper Inputs PL_N3 PL_N4 PL_N3 PL_N4); intro HNONTPLH.
+  apply HNONTPLH in H1; auto.
+Qed.
 
 Search modulo plus.
 Search S plus.
@@ -2034,17 +2294,32 @@ Proof.
 
 (*Lemma  ReDefined:*)
  
-Search List.nth rev.
+Search List.nth rev. 
 
 Search List.nth hd.
 
 Search skipn.
-Lemma FeedNInputs:
+Lemma FeedNInputs1:
   forall (n: nat) (Inputs rh: list nat) (N1 N2: Neuron),
   rh = skipn n Inputs ->
   n <=? (length Inputs) = true ->  
   Output (AfterNTwoLoopN1 (ResetNeuron N1) (ResetNeuron N2) rh) =
   skipn n (Output (AfterNTwoLoopN1 (ResetNeuron N1) (ResetNeuron N2) Inputs)).
+Proof.
+  induction n as [ | n' IH].
+  - intros. simpl. simpl in H. rewrite H. reflexivity.
+  - intros Inputs rh N1 N2 H1 H2. destruct Inputs as [ | h t].
+    + simpl in H2. inversion H2. 
+    + simpl in H1. simpl in H2. generalize (IH t rh N1 N2); intro IHnew.
+      apply IHnew in H1. simpl. auto. auto.
+Qed.
+
+Lemma FeedNInputs2:
+  forall (n: nat) (Inputs rh: list nat) (N1 N2: Neuron),
+  rh = skipn n Inputs ->
+  n <=? (length Inputs) = true ->  
+  Output (AfterNTwoLoopN2 (ResetNeuron N1) (ResetNeuron N2) rh) =
+  skipn n (Output (AfterNTwoLoopN2 (ResetNeuron N1) (ResetNeuron N2) Inputs)).
 Proof.
   induction n as [ | n' IH].
   - intros. simpl. simpl in H. rewrite H. reflexivity.
@@ -2067,16 +2342,231 @@ Proof.
     + simpl. generalize (IH d t); intro IHnew. auto.
 Qed.
 
+
+(*Lemma Test1:
+  forall (Inputs rh: list nat) (PLP: @PositiveLoop Inputs),
+    rh = Inputs.
+Proof.
+  intros. Check PositiveLoop.
+  assert (exists PLP', PLP' = (@PositiveLoop rh)).
+  { exists (@PositiveLoop rh). auto. }
+  destruct H as [PLP' H].
+  generalize (NextOutputN2_TPL rh PLP'); intro HNO.*)
+
+Search Nat.ltb.
+(*Lemma NextTimeTPL_Helper:
+  forall (Inputs: list nat) (time: nat) (N M: Neuron),
+  Qle_bool (Tau N) (hd 0 (Weights N)) = true ->
+  Qle_bool (Tau N) (hd 0 (tl (Weights N)))  = true ->
+  Qle_bool (Tau M) (hd 0 (Weights M))  = true ->
+  (beq_nat (length (Weights N)) 2%nat) = true ->
+  (beq_nat (length (Weights M)) 1%nat) = true ->
+  0 < (hd 0 (Weights N)) ->
+  0 < (hd 0 (tl (Weights N))) ->
+  0 < (hd 0 (Weights M)) ->
+  Eq_Neuron2 N (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  Eq_Neuron2 M (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  List.nth time (rev (Inputs)) 0%nat = 1%nat \/
+  List.nth time (rev (Output M)) 0%nat = 1%nat ->
+  List.nth (time + 1) (rev (Output N)) 0%nat = 1%nat.
+Proof.
+  intros Inputs time N M H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11.
+  inversion H11 as [H12 | H13]. Check rev_nth.
+  - generalize (rev_nth Inputs 0%nat); intro HRN.
+    generalize (HRN time); intro HRNI. clear HRN.
+    destruct (time <? (length Inputs)) eqn: Htl.
+    + assert (CopyHtl: (time <? length Inputs) = true). { auto. }
+      apply Nat.ltb_lt in Htl. apply HRNI in Htl. rewrite Htl in H12.
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat Inputs); intro HHAS.
+      rewrite HHAS in H12. remember (skipn (length Inputs - S time) Inputs) as rh.
+      (*assert (exists X, Eq_Neuron2 X (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh)).
+      { exists (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh). admit. }
+      destruct H as [X H].*)
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh) as Y.
+      assert (CopyX: X = AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh). { auto. }
+      generalize (NextOutputN1_TPL_Helper rh X Y); intro HNON. 
+      generalize (AfterN1Unchanged rh X N M); intro HAN1. apply HAN1 in HeqX.
+      inversion HeqX as [H13 [H14 H15]]. rewrite <- H14 in HNON. rewrite <- H15 in HNON.
+      apply HNON in H1. generalize (FeedNInputs (length Inputs - S time) Inputs rh N M); intro HFNI.
+      apply HFNI in Heqrh. rewrite <- CopyX in Heqrh. rewrite Heqrh in H1. 
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat (Output (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs))); intro HAS.
+      rewrite <- HAS in H1. unfold Eq_Neuron2 in H9. inversion H9 as [H16 H17].
+      rewrite <- H16 in H1. generalize (rev_nth (Output N) 0%nat); intro HRN.
+      (* Tell Amy About this *)       
+      generalize (InOutLengthHelper Inputs N M N M); intro HIOL.
+      unfold Eq_Neuron2 in HIOL. apply HIOL in H9. inversion H9 as [H18 H19].
+      apply beq_nat_true_iff in H18. generalize (HRN (S time)); intro HR. apply Nat.ltb_lt in CopyHtl.
+      apply lt_n_S in CopyHtl. rewrite Nat.add_1_r in H18. rewrite H18 in CopyHtl. apply HR in CopyHtl.
+      generalize (Nat.sub_succ (length Inputs) (S time)); intro HSS. rewrite H18 in HSS. rewrite <- HSS in H1.
+      rewrite H1 in CopyHtl. rewrite Nat.add_1_r. auto.
+      unfold Eq_Neuron2 in H10. auto.
+      generalize (Nat.le_sub_l (length Inputs) (S time)); intro HNLL. apply Nat.leb_le in HNLL. auto.
+      auto. generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H16 [H17 H18]]. rewrite H17 in H3. rewrite H18 in H3. auto. auto.
+      generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H16 [H17 H18]]. rewrite H18 in H5. auto. auto. auto.
+      generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H16 [H17 H18]]. rewrite H18 in H8. auto. (*Here*)auto.
+      rewrite CopyX.*)
+ 
+Lemma NextTimeTPL_Helper:
+  forall (Inputs: list nat) (time: nat) (P Q N M: Neuron),
+  Qle_bool (Tau N) (hd 0 (Weights N)) = true ->
+  Qle_bool (Tau N) (hd 0 (tl (Weights N)))  = true ->
+  Qle_bool (Tau M) (hd 0 (Weights M))  = true ->
+  (beq_nat (length (Weights N)) 2%nat) = true ->
+  (beq_nat (length (Weights M)) 1%nat) = true ->
+  0 < (hd 0 (Weights N)) ->
+  0 < (hd 0 (tl (Weights N))) ->
+  0 < (hd 0 (Weights M)) ->
+  Eq_Neuron2 P (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  Eq_Neuron2 Q (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) Inputs) ->
+  List.nth time (rev (Inputs)) 0%nat = 1%nat \/
+  List.nth time (rev (Output Q)) 0%nat = 1%nat ->
+  List.nth (time + 1) (rev (Output P)) 0%nat = 1%nat.
+Proof.
+  intros Inputs time P Q N M H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11.
+  inversion H11 as [H12 | H13].
+  - generalize (rev_nth Inputs 0%nat); intro HRN.
+    generalize (HRN time); intro HRNI. clear HRN.
+    destruct (time <? (length Inputs)) eqn: Htl.
+    + assert (CopyHtl: (time <? length Inputs) = true). { auto. }
+      apply Nat.ltb_lt in Htl. apply HRNI in Htl. rewrite Htl in H12.
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat Inputs); intro HHAS.
+      rewrite HHAS in H12. remember (skipn (length Inputs - S time) Inputs) as rh.
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh) as Y.
+      assert (CopyX: X = AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh). { auto. }
+      generalize (NextOutputN1_TPL_Helper rh X Y N M); intro HNON.  
+      generalize (AfterN1Unchanged rh X N M); intro HAN1.
+      assert (HtempX: Eq_Neuron2 X (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh)). 
+      { unfold Eq_Neuron2. rewrite <- HeqX. split. auto. split. auto. split. reflexivity. split; reflexivity. }
+      assert (CopyHtX: Eq_Neuron2 X (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh)). { auto. }
+      assert (HtempY: Eq_Neuron2 Y (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh)). 
+      { unfold Eq_Neuron2. rewrite <- HeqY. split. auto. split. auto. split. reflexivity. split; reflexivity. }
+      assert (CopyHtY: Eq_Neuron2 Y (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh)). { auto. }
+      apply HAN1 in HtempX. inversion HtempX as [H13 [H14 H15]]. (*rewrite H14 in HNON. rewrite H15 in HNON.*)
+      apply HNON in H1. generalize (FeedNInputs1 (length Inputs - S time) Inputs rh N M); intro HFNI.
+      apply HFNI in Heqrh. rewrite <- CopyX in Heqrh. rewrite Heqrh in H1. 
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat (Output (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs))); intro HAS.
+      rewrite <- HAS in H1. unfold Eq_Neuron2 in H9. inversion H9 as [H16 H17].
+      rewrite <- H16 in H1. generalize (rev_nth (Output P) 0%nat); intro HRN.
+      (* Tell Amy About this *)       
+      generalize (InOutLengthHelper Inputs P Q N M); intro HIOL.
+      unfold Eq_Neuron2 in HIOL. apply HIOL in H9. inversion H9 as [H18 H19].
+      apply beq_nat_true_iff in H18. generalize (HRN (S time)); intro HR. apply Nat.ltb_lt in CopyHtl.
+      apply lt_n_S in CopyHtl. rewrite Nat.add_1_r in H18. rewrite H18 in CopyHtl. apply HR in CopyHtl.
+      generalize (Nat.sub_succ (length Inputs) (S time)); intro HSS. rewrite H18 in HSS. rewrite <- HSS in H1.
+      rewrite H1 in CopyHtl. rewrite Nat.add_1_r. auto.
+      unfold Eq_Neuron2 in H10. auto.
+      generalize (Nat.le_sub_l (length Inputs) (S time)); intro HNLL. apply Nat.leb_le in HNLL. auto.
+      auto. generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HtempY.
+      inversion HtempY as [H16 [H17 H18]]. auto. auto. auto. auto. auto. auto. left. auto. auto. auto.
+    + apply Nat.ltb_ge in Htl. generalize (@nth_overflow nat Inputs time 0%nat); intro HN.
+  - generalize (rev_nth (Output Q) 0%nat); intro HRN. 
+    generalize (HRN time); intro HRNI. clear HRN.
+    destruct (time <? (length Inputs)) eqn: Htl.
+    + generalize (InOutLengthHelper Inputs P Q N M); intro HIOL. apply HIOL in H9.
+      inversion H9 as [H12 H14]. apply Nat.ltb_lt in Htl. 
+      generalize (Nat.lt_lt_succ_r time (length Inputs)); intro HLLS.
+      apply HLLS in Htl. generalize (Nat.add_1_r (length Inputs)); intro HAL. rewrite HAL in H14.
+      apply beq_nat_true_iff in H14. rewrite H14 in Htl. 
+      (*assert (CopyHtl: (time <? length Inputs) = true). { auto. }*)
+      apply HRNI in Htl.
+      (*unfold Eq_Neuron2 in HIOL. apply HIOL in H9. inversion H9 as [H18 H19].
+      
+      apply Nat.ltb_lt in Htl. apply HRNI in Htl. rewrite Htl in H12.*) 
+      generalize (HeadAfterSkip (length (Output Q) - S time) 0%nat (Output Q)); intro HHAS.
+      rewrite HHAS in Htl. remember (skipn (length (Output Q) - S time) Inputs) as rh.
+      remember (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh) as Y.
+      assert (CopyX: X = AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh). { auto. }
+      generalize (NextOutputN1_TPL_Helper rh X Y N M); intro HNON.  
+      generalize (AfterN1Unchanged rh X N M); intro HAN1.
+      assert (HtempX: Eq_Neuron2 X (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh)). 
+      { unfold Eq_Neuron2. rewrite <- HeqX. split. auto. split. auto. split. reflexivity. split; reflexivity. }
+      assert (CopyHtX: Eq_Neuron2 X (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) rh)). { auto. }
+      assert (HtempY: Eq_Neuron2 Y (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh)). 
+      { unfold Eq_Neuron2. rewrite <- HeqY. split. auto. split. auto. split. reflexivity. split; reflexivity. }
+      assert (CopyHtY: Eq_Neuron2 Y (AfterNTwoLoopN2 (ResetNeuron N) (ResetNeuron M) rh)). { auto. }
+      apply HAN1 in HtempX. inversion HtempX as [H15 [H16 H17]]. (*rewrite H14 in HNON. rewrite H15 in HNON.*)
+      apply HNON in H1. generalize (FeedNInputs2 (length (Output Q) - S time) Inputs rh N M); intro HFNI.
+      apply HFNI in Heqrh. rewrite <- CopyX in Heqrh. rewrite Heqrh in H1. 
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat (Output (AfterNTwoLoopN1 (ResetNeuron N) (ResetNeuron M) Inputs))); intro HAS.
+      rewrite <- HAS in H1. unfold Eq_Neuron2 in H9. inversion H9 as [H16 H17].
+      rewrite <- H16 in H1. generalize (rev_nth (Output P) 0%nat); intro HRN.
+      (* Tell Amy About this *)       
+      generalize (InOutLengthHelper Inputs P Q N M); intro HIOL.
+      unfold Eq_Neuron2 in HIOL. apply HIOL in H9. inversion H9 as [H18 H19].
+      apply beq_nat_true_iff in H18. generalize (HRN (S time)); intro HR. apply Nat.ltb_lt in CopyHtl.
+      apply lt_n_S in CopyHtl. rewrite Nat.add_1_r in H18. rewrite H18 in CopyHtl. apply HR in CopyHtl.
+      generalize (Nat.sub_succ (length Inputs) (S time)); intro HSS. rewrite H18 in HSS. rewrite <- HSS in H1.
+      rewrite H1 in CopyHtl. rewrite Nat.add_1_r. auto.
+      unfold Eq_Neuron2 in H10. auto.
+      generalize (Nat.le_sub_l (length Inputs) (S time)); intro HNLL. apply Nat.leb_le in HNLL. auto.
+      auto. generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HtempY.
+      inversion HtempY as [H16 [H17 H18]]. auto. auto. auto. auto. auto. auto. left. auto. auto. auto.
+      generalize (AfterN2Unchanged rh Y N M); intro HAN2.  apply HAN2 in HeqY.
+      inversion HeqY as [H16 [H17 H18]]. rewrite H18 in H5. auto. auto. auto.
+      generalize (AfterN2Unchanged rh Y N M); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H16 [H17 H18]]. rewrite H18 in H8. auto. (*Here*)auto.
+      rewrite CopyX. 
 Lemma NextTimeTPL:
   forall (Inputs: list nat) (time: nat) (PLP: @PositiveLoop Inputs),
   Qle_bool (Tau (PL_N1 PLP)) (hd 0 (Weights (PL_N1 PLP)))  = true ->
   (Qle_bool (Tau (PL_N1 PLP)) (hd 0 (tl (Weights (PL_N1 PLP)))))  = true ->
   (Qle_bool (Tau (PL_N2 PLP)) (hd 0 (Weights (PL_N2 PLP))))  = true ->
   List.nth time (rev (Inputs)) 0%nat = 1%nat \/
-  List.nth time (rev (Output PL_N2 PLP)->
+  List.nth time (rev (Output (PL_N2 PLP))) 0%nat = 1%nat ->
   List.nth (time + 1) (rev (Output (PL_N1 PLP))) 0%nat = 1%nat.
 Proof.
-  destruct PLP. simpl. intros H1 H2 H3 H4.
+  destruct PLP. simpl.
+  intros H1 H2 H3 H4.
+  inversion H4 as [H5 | H6].
+  - generalize (rev_nth Inputs 0%nat); intro HRN.
+    generalize (HRN time); intro HRNI. clear HRN.
+    destruct (time <? (length Inputs)) eqn: Htl.
+    + assert (CopyHtl: (time <? length Inputs) = true). { auto. }
+      apply Nat.ltb_lt in Htl. apply HRNI in Htl. rewrite Htl in H5.
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat Inputs); intro HHAS.
+      rewrite HHAS in H5. remember (skipn (length Inputs - S time) Inputs) as rh.
+      remember (AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) rh) as X.
+      remember (AfterNTwoLoopN2 (ResetNeuron PL_N3) (ResetNeuron PL_N4) rh) as Y.
+      assert (CopyX: X = AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) rh). { auto. }
+      generalize (NextOutputN1_TPL rh X Y); intro HNON. 
+      generalize (AfterN1Unchanged rh X PL_N3 PL_N4); intro HAN1. apply HAN1 in HeqX.
+      inversion HeqX as [H7 [H8 H9]]. rewrite <- H8 in HNON. rewrite <- H9 in HNON.
+      apply HNON in H1. generalize (FeedNInputs (length Inputs - S time) Inputs rh PL_N3 PL_N4); intro HFNI.
+      apply HFNI in Heqrh. rewrite <- CopyX in Heqrh. rewrite Heqrh in H1. 
+      generalize (HeadAfterSkip (length Inputs - S time) 0%nat (Output (AfterNTwoLoopN1 (ResetNeuron PL_N3) (ResetNeuron PL_N4) Inputs))); intro HAS.
+      rewrite <- HAS in H1. unfold Eq_Neuron2 in PL_Connection3. inversion PL_Connection3 as [H10 H11].
+      rewrite <- H10 in H1. generalize (rev_nth (Output PL_N3) 0%nat); intro HRN.
+      (* Tell Amy About this *)       
+      generalize (InOutLengthHelper Inputs PL_N3 PL_N4 PL_N3 PL_N4); intro HIOL.
+      unfold Eq_Neuron2 in HIOL. apply HIOL in PL_Connection3. inversion PL_Connection3 as [H12 H13].
+      apply beq_nat_true_iff in H12. generalize (HRN (S time)); intro HR. apply Nat.ltb_lt in CopyHtl.
+      apply lt_n_S in CopyHtl. rewrite Nat.add_1_r in H12. rewrite H12 in CopyHtl. apply HR in CopyHtl.
+      generalize (Nat.sub_succ (length Inputs) (S time)); intro HSS. rewrite H12 in HSS. rewrite <- HSS in H1.
+      rewrite H1 in CopyHtl. rewrite Nat.add_1_r. auto.
+      unfold Eq_Neuron2 in PL_Connection4. auto.
+      generalize (Nat.le_sub_l (length Inputs) (S time)); intro HNLL. apply Nat.leb_le in HNLL. auto.
+      auto. generalize (AfterN2Unchanged rh Y PL_N3 PL_N4); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H10 [H11 H12]]. rewrite H11 in H3. rewrite H12 in H3. auto. auto.
+      generalize (AfterN2Unchanged rh Y PL_N3 PL_N4); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H10 [H11 H12]]. rewrite H12 in PL_NinputN4. auto. auto. auto.
+      generalize (AfterN2Unchanged rh Y PL_N3 PL_N4); intro HAN2. apply HAN2 in HeqY.
+      inversion HeqY as [H10 [H11 H12]]. rewrite H12 in PL_PW6. auto. (*Here*)auto.
+      rewrite CopyX. 
+      assert (HtlS: time <? length Inputs + 1%nat = true).
+      { rewrite Nat.add_1_r. generalize (Nat.lt_lt_succ_r time (length Inputs)); intro HLLS.
+        apply Nat.ltb_lt in CopyHtl. apply HLLS in CopyHtl. apply Nat.ltb_lt. auto. }
+      apply Nat.ltb_lt in HtlS. rewrite H12 in HtlS. apply lt_n_S in HtlS. Search S lt. apply HR in HtlS.
+      Search S lt. rewrite <- Nat.add_1_l in HRN.
+      generalize (FeedNInputs (length Inputs - S time) Inputs rh PL_N3 PL_N4); intro HFI.
+      rewrite H12 in H1.
+
+      rewrite <- H12 in HRN.
   
   (*generalize dependent PL_N4.
   generalize dependent PL_N3.*)
